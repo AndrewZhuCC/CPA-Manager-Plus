@@ -67,6 +67,7 @@ const CODEX_RESET_CREDITS_REQUEST_TIMEOUT_MS = 8000;
 export type CodexQuotaData = {
   planType: string | null;
   windows: CodexQuotaWindow[];
+  fetchedAtMs?: number;
   subscriptionActiveUntil: string | null;
   rateLimitResetCreditsAvailableCount: number | null;
   rateLimitResetCredits: CodexRateLimitResetCredit[];
@@ -269,9 +270,10 @@ export const fetchAntigravityQuota = async (
 export const buildCodexQuotaWindows = (
   payload: CodexUsagePayload,
   t: TFunction,
-  planType?: string | null
+  planType?: string | null,
+  nowMs = Date.now()
 ): CodexQuotaWindow[] =>
-  buildCodexQuotaWindowInfos(payload, { planType }).map((window) => ({
+  buildCodexQuotaWindowInfos(payload, { planType, nowMs }).map((window) => ({
     id: window.id,
     label: t(window.labelKey, window.labelParams),
     labelKey: window.labelKey,
@@ -279,6 +281,8 @@ export const buildCodexQuotaWindows = (
     usedPercent: window.usedPercent,
     resetLabel: window.resetLabel,
     limitWindowSeconds: window.limitWindowSeconds,
+    resetAtMs: window.resetAtMs,
+    sampledAtMs: window.sampledAtMs,
   }));
 
 const resolveCodexRateLimitResetCreditsAvailableCount = (
@@ -371,6 +375,7 @@ export const fetchCodexQuota = async (
     url: CODEX_USAGE_URL,
     header: buildCodexUsageRequestHeaders(accountId),
   });
+  const fetchedAtMs = Date.now();
 
   if (result.statusCode < 200 || result.statusCode >= 300) {
     throw createStatusError(getApiCallErrorMessage(result), result.statusCode);
@@ -383,12 +388,13 @@ export const fetchCodexQuota = async (
 
   const planTypeFromUsage = normalizePlanType(payload.plan_type ?? payload.planType);
   const planType = planTypeFromUsage ?? planTypeFromFile;
-  const windows = buildCodexQuotaWindows(payload, t, planType);
+  const windows = buildCodexQuotaWindows(payload, t, planType, fetchedAtMs);
   const usageResetCreditsAvailableCount = resolveCodexRateLimitResetCreditsAvailableCount(payload);
   const resetCredits = await fetchCodexResetCredits(authIndex, accountId, t);
   return {
     planType,
     windows,
+    fetchedAtMs,
     subscriptionActiveUntil: resolveCodexSubscriptionActiveUntil(payload),
     rateLimitResetCreditsAvailableCount: resolveCodexResetCreditsAvailableCount(
       resetCredits,

@@ -423,27 +423,53 @@ const hasKnownResetLabel = (value: unknown): value is string => {
 const mergeCodexQuotaWindow = (
   activeWindow: CodexQuotaWindow,
   observedWindow: CodexQuotaWindow
-): CodexQuotaWindow => ({
-  ...activeWindow,
-  ...(hasHeaderValue(observedWindow.label) ? { label: observedWindow.label } : {}),
-  ...(hasHeaderValue(observedWindow.labelKey) ? { labelKey: observedWindow.labelKey } : {}),
-  ...(observedWindow.labelParams && Object.keys(observedWindow.labelParams).length > 0
-    ? { labelParams: observedWindow.labelParams }
-    : {}),
-  ...(observedWindow.usedPercent !== null &&
-  observedWindow.usedPercent !== undefined &&
-  Number.isFinite(observedWindow.usedPercent)
-    ? { usedPercent: observedWindow.usedPercent }
-    : {}),
-  ...(hasKnownResetLabel(observedWindow.resetLabel)
-    ? { resetLabel: observedWindow.resetLabel }
-    : {}),
-  ...(observedWindow.limitWindowSeconds !== null &&
-  observedWindow.limitWindowSeconds !== undefined &&
-  observedWindow.limitWindowSeconds > 0
-    ? { limitWindowSeconds: observedWindow.limitWindowSeconds }
-    : {}),
-});
+): CodexQuotaWindow => {
+  const hasObservedUsage =
+    observedWindow.usedPercent !== null &&
+    observedWindow.usedPercent !== undefined &&
+    Number.isFinite(observedWindow.usedPercent);
+  const observedResetAtMs =
+    observedWindow.resetAtMs !== null &&
+    observedWindow.resetAtMs !== undefined &&
+    Number.isFinite(observedWindow.resetAtMs) &&
+    observedWindow.resetAtMs > 0
+      ? observedWindow.resetAtMs
+      : null;
+  const observedSampledAtMs =
+    observedWindow.sampledAtMs !== null &&
+    observedWindow.sampledAtMs !== undefined &&
+    Number.isFinite(observedWindow.sampledAtMs) &&
+    observedWindow.sampledAtMs > 0
+      ? observedWindow.sampledAtMs
+      : null;
+  const observedLimitWindowSeconds =
+    observedWindow.limitWindowSeconds !== null &&
+    observedWindow.limitWindowSeconds !== undefined &&
+    Number.isFinite(observedWindow.limitWindowSeconds) &&
+    observedWindow.limitWindowSeconds > 0
+      ? observedWindow.limitWindowSeconds
+      : null;
+
+  return {
+    ...activeWindow,
+    ...(hasHeaderValue(observedWindow.label) ? { label: observedWindow.label } : {}),
+    ...(hasHeaderValue(observedWindow.labelKey) ? { labelKey: observedWindow.labelKey } : {}),
+    ...(observedWindow.labelParams && Object.keys(observedWindow.labelParams).length > 0
+      ? { labelParams: observedWindow.labelParams }
+      : {}),
+    ...(hasObservedUsage
+      ? {
+          usedPercent: observedWindow.usedPercent,
+          resetAtMs: observedResetAtMs,
+          sampledAtMs: observedSampledAtMs,
+          resetLabel: hasKnownResetLabel(observedWindow.resetLabel)
+            ? observedWindow.resetLabel
+            : '-',
+          limitWindowSeconds: observedLimitWindowSeconds,
+        }
+      : {}),
+  };
+};
 
 const mergeCodexQuotaWindows = (
   activeWindows: CodexQuotaWindow[] | undefined,
@@ -611,7 +637,7 @@ export const buildObservedCodexQuotaState = (
   const headerPlanType = observedQuota?.planType || getHeaderSnapshotPlanType(snapshot);
   const planType = resolveCodexPlanType(file) ?? (headerPlanType || null);
   const observedWindows = observedQuota?.payload
-    ? buildCodexQuotaWindows(observedQuota.payload, t, planType)
+    ? buildCodexQuotaWindows(observedQuota.payload, t, planType, snapshot?.timestamp_ms)
     : [];
   const windows: CodexQuotaWindow[] =
     observedWindows.length > 0
@@ -625,6 +651,8 @@ export const buildObservedCodexQuotaState = (
               }),
               usedPercent,
               resetLabel: recoverLabel,
+              resetAtMs: recoverAtMS,
+              sampledAtMs: snapshot?.timestamp_ms ?? null,
             },
           ]
         : [];
@@ -1089,7 +1117,7 @@ export const CODEX_CONFIG: QuotaConfig<CodexQuotaState, CodexQuotaData> = {
     rateLimitResetCredits: data.rateLimitResetCredits,
     rateLimitResetCreditsError: data.rateLimitResetCreditsError,
     ...buildCodexQuotaAuthIdentity(file),
-    fetchedAtMs: Date.now(),
+    fetchedAtMs: data.fetchedAtMs ?? Date.now(),
   }),
   buildErrorState: (message, status, file) => ({
     status: 'error',

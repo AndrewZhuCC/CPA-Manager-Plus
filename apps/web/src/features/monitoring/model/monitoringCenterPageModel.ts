@@ -1238,7 +1238,10 @@ export const buildObservedCodexAccountQuotaEntry = (
   ].filter(Boolean);
 
   const observedWindows: CodexQuotaWindow[] = observedQuota?.payload
-    ? buildCodexQuotaWindowInfos(observedQuota.payload, { planType }).map((window) => ({
+    ? buildCodexQuotaWindowInfos(observedQuota.payload, {
+        planType,
+        nowMs: observedAtMs ?? undefined,
+      }).map((window) => ({
         id: window.id,
         label: t(window.labelKey, window.labelParams),
         labelKey: window.labelKey,
@@ -1246,6 +1249,8 @@ export const buildObservedCodexAccountQuotaEntry = (
         usedPercent: window.usedPercent,
         resetLabel: window.resetLabel,
         limitWindowSeconds: window.limitWindowSeconds,
+        resetAtMs: window.resetAtMs,
+        sampledAtMs: window.sampledAtMs,
       }))
     : [];
   const windows: AccountQuotaWindow[] =

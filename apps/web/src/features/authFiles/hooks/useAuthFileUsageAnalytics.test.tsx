@@ -2,7 +2,14 @@ import { useEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MonitoringAnalyticsResponse } from '@/services/api/usageService';
-import { useAuthFileUsageAnalytics } from './useAuthFileUsageAnalytics';
+import {
+  getAuthFileUsageWindowTargetsSignature,
+  type AuthFileUsageWindowTarget,
+} from '@/features/authFiles/model/authFileUsageSummary';
+import {
+  fetchAuthFileUsageRows,
+  useAuthFileUsageAnalytics,
+} from './useAuthFileUsageAnalytics';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -16,7 +23,64 @@ vi.mock('@/services/api/usageService', () => ({
   },
 }));
 
-function Harness({ onRows }: { onRows: (value: { fiveHour: number; weekly: number }) => void }) {
+const targets: AuthFileUsageWindowTarget[] = [
+  {
+    key: 'codex-main.json::0',
+    kind: 'fiveHour',
+    authFileName: 'codex-main.json',
+    authIndex: '0',
+    fromMs: 1_700_000_000_000,
+    toMs: 1_700_010_000_000,
+  },
+  {
+    key: 'codex-main.json::0',
+    kind: 'weekly',
+    authFileName: 'codex-main.json',
+    authIndex: '0',
+    fromMs: 1_699_500_000_000,
+    toMs: 1_700_010_000_000,
+  },
+];
+
+type RowsSnapshot = {
+  fiveHour: number;
+  weekly: number;
+  windowSignature: string;
+  windowTargetsComplete: boolean;
+};
+
+const analyticsResponse = (id: string): MonitoringAnalyticsResponse => ({
+  generated_at_ms: 1_700_000_000_000,
+  granularity: 'hour',
+  credential_stats: [
+    {
+      id,
+      auth_file_snapshot: 'codex-main.json',
+      auth_index: '0',
+      calls: 1,
+      success_calls: 1,
+      failure_calls: 0,
+      success_rate: 1,
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      total_tokens: 1,
+      cost: 0.01,
+      average_latency_ms: null,
+      last_seen_ms: 0,
+    },
+  ],
+});
+
+function Harness({
+  onRows,
+  windowTargets = targets,
+}: {
+  onRows: (value: RowsSnapshot) => void;
+  windowTargets?: AuthFileUsageWindowTarget[];
+}) {
   const { rows, load } = useAuthFileUsageAnalytics({
     managerServiceBase: 'http://manager.local:18317',
     managementKey: 'test-key',
@@ -25,11 +89,16 @@ function Harness({ onRows }: { onRows: (value: { fiveHour: number; weekly: numbe
   });
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(windowTargets);
+  }, [load, windowTargets]);
 
   useEffect(() => {
-    onRows({ fiveHour: rows.fiveHour.length, weekly: rows.weekly.length });
+    onRows({
+      fiveHour: rows.fiveHour.length,
+      weekly: rows.weekly.length,
+      windowSignature: rows.windowSignature,
+      windowTargetsComplete: rows.windowTargetsComplete,
+    });
   }, [onRows, rows]);
 
   return null;
@@ -43,34 +112,13 @@ describe('useAuthFileUsageAnalytics', () => {
     mocks.getAnalytics.mockReset();
   });
 
-  it('loads only 5-hour and weekly credential stats when retained history is disabled', async () => {
-    const response = (id: string): MonitoringAnalyticsResponse => ({
-      generated_at_ms: 1_700_000_000_000,
-      granularity: 'hour',
-      credential_stats: [
-        {
-          id,
-          auth_file_snapshot: 'codex-main.json',
-          auth_index: '0',
-          calls: 1,
-          success_calls: 1,
-          failure_calls: 0,
-          success_rate: 1,
-          input_tokens: 0,
-          output_tokens: 0,
-          cached_tokens: 0,
-          cache_read_tokens: 0,
-          cache_creation_tokens: 0,
-          total_tokens: 1,
-          cost: 0.01,
-          average_latency_ms: null,
-          last_seen_ms: 0,
-        },
-      ],
-    });
-    mocks.getAnalytics
-      .mockResolvedValueOnce(response('five-hour'))
-      .mockResolvedValueOnce(response('weekly'));
+  it('loads exact reset-aligned credential windows when retained history is disabled', async () => {
+    mocks.getAnalytics.mockImplementation(
+      (_base: string, _key: string, request: { from_ms: number }) =>
+        Promise.resolve(
+          analyticsResponse(request.from_ms === targets[0].fromMs ? 'five-hour' : 'weekly')
+        )
+    );
     const onRows = vi.fn();
     let renderer!: ReactTestRenderer;
 
@@ -81,9 +129,114 @@ describe('useAuthFileUsageAnalytics', () => {
     });
 
     expect(mocks.getAnalytics).toHaveBeenCalledTimes(2);
-    expect(mocks.getAnalytics.mock.calls[0]?.[2].include).toEqual({ credential_stats: true });
-    expect(onRows).toHaveBeenLastCalledWith({ fiveHour: 1, weekly: 1 });
+    expect(mocks.getAnalytics.mock.calls.map((call) => call[2])).toEqual([
+      {
+        from_ms: targets[0].fromMs,
+        to_ms: targets[0].toMs,
+        now_ms: targets[0].toMs,
+        filters: {
+          auth_files: ['codex-main.json'],
+          auth_indices: ['0'],
+        },
+        include: { credential_stats: true },
+      },
+      {
+        from_ms: targets[1].fromMs,
+        to_ms: targets[1].toMs,
+        now_ms: targets[1].toMs,
+        filters: {
+          auth_files: ['codex-main.json'],
+          auth_indices: ['0'],
+        },
+        include: { credential_stats: true },
+      },
+    ]);
+    expect(onRows).toHaveBeenLastCalledWith({
+      fiveHour: 1,
+      weekly: 1,
+      windowSignature: getAuthFileUsageWindowTargetsSignature(targets),
+      windowTargetsComplete: true,
+    });
 
     act(() => renderer.unmount());
+  });
+
+  it('clears rows until analytics for the new quota window finishes loading', async () => {
+    const previousTargets = [targets[0]];
+    const nextTargets: AuthFileUsageWindowTarget[] = [
+      {
+        ...targets[0],
+        fromMs: targets[0].fromMs + 18_000_000,
+        toMs: targets[0].toMs + 18_000_000,
+      },
+    ];
+    let resolveNext!: (response: MonitoringAnalyticsResponse) => void;
+    const nextResponse = new Promise<MonitoringAnalyticsResponse>((resolve) => {
+      resolveNext = resolve;
+    });
+    mocks.getAnalytics
+      .mockResolvedValueOnce(analyticsResponse('previous-window'))
+      .mockReturnValueOnce(nextResponse);
+    const onRows = vi.fn();
+    let renderer!: ReactTestRenderer;
+
+    await act(async () => {
+      renderer = create(<Harness onRows={onRows} windowTargets={previousTargets} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(onRows).toHaveBeenLastCalledWith({
+        fiveHour: 1,
+        weekly: 0,
+        windowSignature: getAuthFileUsageWindowTargetsSignature(previousTargets),
+        windowTargetsComplete: true,
+      });
+    });
+
+    await act(async () => {
+      renderer.update(<Harness onRows={onRows} windowTargets={nextTargets} />);
+      await Promise.resolve();
+    });
+
+    expect(onRows).toHaveBeenLastCalledWith({
+      fiveHour: 0,
+      weekly: 0,
+      windowSignature: '',
+      windowTargetsComplete: false,
+    });
+
+    await act(async () => {
+      resolveNext(analyticsResponse('next-window'));
+      await nextResponse;
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(onRows).toHaveBeenLastCalledWith({
+        fiveHour: 1,
+        weekly: 0,
+        windowSignature: getAuthFileUsageWindowTargetsSignature(nextTargets),
+        windowTargetsComplete: true,
+      });
+    });
+
+    act(() => renderer.unmount());
+  });
+
+  it('marks partial window request failures so the page can retry the same targets', async () => {
+    mocks.getAnalytics.mockRejectedValueOnce(new Error('temporary failure'));
+
+    const rows = await fetchAuthFileUsageRows({
+      managerServiceBase: 'http://manager.local:18317',
+      managementKey: 'test-key',
+      includeRetained: false,
+      windowTargets: [targets[0]],
+    });
+
+    expect(rows.fiveHour).toEqual([]);
+    expect(rows.windowSignature).toBe(
+      getAuthFileUsageWindowTargetsSignature([targets[0]])
+    );
+    expect(rows.windowTargetsComplete).toBe(false);
   });
 });

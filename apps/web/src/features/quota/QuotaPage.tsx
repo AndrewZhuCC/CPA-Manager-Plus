@@ -38,8 +38,10 @@ import {
 } from '@/utils/usageHeaderSnapshots';
 import { useAuthFileUsageAnalytics } from '@/features/authFiles/hooks/useAuthFileUsageAnalytics';
 import {
+  buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummaryMap,
   getAuthFileUsageSummaryKey,
+  getAuthFileUsageWindowTargetsSignature,
 } from '@/features/authFiles/model/authFileUsageSummary';
 import { CodexQuotaAggregateSummary } from './CodexQuotaAggregateSummary';
 import { buildCodexQuotaAggregateSummary } from './codexQuotaAggregateModel';
@@ -71,6 +73,7 @@ export function QuotaPage() {
     enabled: requestMonitoringAvailable,
     includeRetained: false,
   });
+  const codexUsageWindowSignatureRef = useRef('');
   const initialUiState = useRef(readQuotaPageUiState());
 
   const [files, setFiles] = useState<AuthFileItem[]>([]);
@@ -142,9 +145,8 @@ export function QuotaPage() {
       loadConfig(),
       loadFiles(),
       loadHeaderSnapshots(),
-      loadCodexUsageSummaries(),
     ]);
-  }, [loadCodexUsageSummaries, loadConfig, loadFiles, loadHeaderSnapshots]);
+  }, [loadConfig, loadFiles, loadHeaderSnapshots]);
 
   useHeaderRefresh(handleHeaderRefresh);
 
@@ -152,8 +154,7 @@ export function QuotaPage() {
     loadFiles();
     loadConfig();
     loadHeaderSnapshots();
-    loadCodexUsageSummaries();
-  }, [loadFiles, loadConfig, loadHeaderSnapshots, loadCodexUsageSummaries]);
+  }, [loadFiles, loadConfig, loadHeaderSnapshots]);
 
   const headerSnapshotLookup = useMemo(
     () => buildUsageHeaderSnapshotLookup(headerSnapshots),
@@ -179,15 +180,53 @@ export function QuotaPage() {
     return quotaMap;
   }, [codexFiles, codexQuota, headerSnapshotLookup, t]);
 
+  const codexUsageWindowTargets = useMemo(
+    () => buildAuthFileUsageWindowTargets(codexFiles, codexDisplayQuotaByUsageKey),
+    [codexDisplayQuotaByUsageKey, codexFiles]
+  );
+  const codexUsageWindowTargetsSignature = useMemo(
+    () => getAuthFileUsageWindowTargetsSignature(codexUsageWindowTargets),
+    [codexUsageWindowTargets]
+  );
+
+  useEffect(() => {
+    const requestSignature = `${managerServiceBase}\u0000${managementKey}\u0000${requestMonitoringAvailable ? '1' : '0'}\u0000${codexUsageWindowTargetsSignature}`;
+    if (requestSignature === codexUsageWindowSignatureRef.current) return;
+    codexUsageWindowSignatureRef.current = requestSignature;
+    void loadCodexUsageSummaries(codexUsageWindowTargets).then((complete) => {
+      if (!complete && codexUsageWindowSignatureRef.current === requestSignature) {
+        codexUsageWindowSignatureRef.current = '';
+      }
+    });
+  }, [
+    codexUsageWindowTargets,
+    codexUsageWindowTargetsSignature,
+    loadCodexUsageSummaries,
+    managementKey,
+    managerServiceBase,
+    requestMonitoringAvailable,
+  ]);
+
   const codexUsageSummaryByKey = useMemo(
     () =>
       buildAuthFileUsageSummaryMap(codexFiles, {
         retainedRows: [],
-        fiveHourRows: codexUsageRows.fiveHour,
-        weeklyRows: codexUsageRows.weekly,
+        fiveHourRows:
+          codexUsageRows.windowSignature === codexUsageWindowTargetsSignature
+            ? codexUsageRows.fiveHour
+            : [],
+        weeklyRows:
+          codexUsageRows.windowSignature === codexUsageWindowTargetsSignature
+            ? codexUsageRows.weekly
+            : [],
         codexQuotaByKey: codexDisplayQuotaByUsageKey,
       }),
-    [codexDisplayQuotaByUsageKey, codexFiles, codexUsageRows]
+    [
+      codexDisplayQuotaByUsageKey,
+      codexFiles,
+      codexUsageRows,
+      codexUsageWindowTargetsSignature,
+    ]
   );
 
   const codexAggregateSummary = useMemo(

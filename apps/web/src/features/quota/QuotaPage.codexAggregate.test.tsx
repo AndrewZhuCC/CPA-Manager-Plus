@@ -3,6 +3,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthFileItem, CodexQuotaState } from '@/types';
 import type { MonitoringAnalyticsCredentialStatRow } from '@/services/api/usageService';
+import { getAuthFileUsageWindowTargetsSignature } from '@/features/authFiles/model/authFileUsageSummary';
 import { QuotaPage } from './QuotaPage';
 
 const { mocks } = vi.hoisted(() => ({
@@ -20,6 +21,8 @@ const { mocks } = vi.hoisted(() => ({
       retained: [] as MonitoringAnalyticsCredentialStatRow[],
       fiveHour: [] as MonitoringAnalyticsCredentialStatRow[],
       weekly: [] as MonitoringAnalyticsCredentialStatRow[],
+      windowSignature: '',
+      windowTargetsComplete: true,
     },
   },
 }));
@@ -121,25 +124,51 @@ describe('QuotaPage Codex aggregate summary', () => {
     mocks.fetchConfigYaml.mockReset();
     mocks.getHeaderSnapshots.mockReset();
     mocks.loadUsage.mockReset();
+    mocks.loadUsage.mockResolvedValue(true);
     mocks.codexQuota = {};
     mocks.usageRows.retained = [];
     mocks.usageRows.fiveHour = [];
     mocks.usageRows.weekly = [];
+    mocks.usageRows.windowSignature = '';
+    mocks.usageRows.windowTargetsComplete = true;
   });
 
   it('renders fleet-wide 5-hour and weekly remaining totals below Codex quota', async () => {
+    const quotaSampleAtMs = Date.now() - 1_000;
+    const fiveHourResetAtMs = quotaSampleAtMs + 60 * 60 * 1000;
+    const weeklyResetAtMs = quotaSampleAtMs + 24 * 60 * 60 * 1000;
     const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
     mocks.list.mockResolvedValue({ files: [file] });
     mocks.fetchConfigYaml.mockResolvedValue(undefined);
     mocks.getHeaderSnapshots.mockResolvedValue({ items: [] });
     mocks.usageRows.fiveHour = [credentialRow(file, 5_000, 0.25)];
     mocks.usageRows.weekly = [credentialRow(file, 28_000, 2.8)];
+    const expectedTargets = [
+      {
+        key: 'codex-main.json::0',
+        kind: 'fiveHour' as const,
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: fiveHourResetAtMs - 18_000 * 1000,
+        toMs: quotaSampleAtMs,
+      },
+      {
+        key: 'codex-main.json::0',
+        kind: 'weekly' as const,
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: weeklyResetAtMs - 604_800 * 1000,
+        toMs: quotaSampleAtMs,
+      },
+    ];
+    mocks.usageRows.windowSignature = getAuthFileUsageWindowTargetsSignature(expectedTargets);
     mocks.codexQuota = {
       'codex-main.json::0': {
         status: 'success',
         authFileKey: 'codex-main.json::0',
         authFileName: file.name,
         authIndex: '0',
+        fetchedAtMs: quotaSampleAtMs,
         windows: [
           {
             id: 'five-hour',
@@ -147,6 +176,7 @@ describe('QuotaPage Codex aggregate summary', () => {
             usedPercent: 25,
             resetLabel: 'soon',
             limitWindowSeconds: 18_000,
+            resetAtMs: fiveHourResetAtMs,
           },
           {
             id: 'weekly',
@@ -154,6 +184,7 @@ describe('QuotaPage Codex aggregate summary', () => {
             usedPercent: 40,
             resetLabel: 'later',
             limitWindowSeconds: 604_800,
+            resetAtMs: weeklyResetAtMs,
           },
         ],
       },
@@ -177,6 +208,6 @@ describe('QuotaPage Codex aggregate summary', () => {
     expect(readText(weekly)).toContain('~$4.20');
     expect(readText(weekly)).toContain('~42.0K');
     expect(readText(weekly)).toContain('1/1');
-    expect(mocks.loadUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.loadUsage).toHaveBeenLastCalledWith(expectedTargets);
   });
 });

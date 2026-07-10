@@ -123,6 +123,8 @@ describe('resolveQuotaDisplayState', () => {
           usedPercent: 10,
           resetLabel: '06/30 12:00',
           limitWindowSeconds: 18_000,
+          resetAtMs: 1_800,
+          sampledAtMs: 1_000,
         },
         {
           id: 'spark-five-hour-0',
@@ -159,6 +161,8 @@ describe('resolveQuotaDisplayState', () => {
           usedPercent: 80,
           resetLabel: '07/01 02:00',
           limitWindowSeconds: null,
+          resetAtMs: 2_800,
+          sampledAtMs: 2_000,
         },
         {
           id: 'weekly',
@@ -188,12 +192,58 @@ describe('resolveQuotaDisplayState', () => {
       id: 'five-hour',
       usedPercent: 80,
       resetLabel: '07/01 02:00',
-      limitWindowSeconds: 18_000,
+      limitWindowSeconds: null,
+      resetAtMs: 2_800,
+      sampledAtMs: 2_000,
     });
     expect(result.windows[1]).toMatchObject({
       id: 'spark-five-hour-0',
       usedPercent: 30,
       resetLabel: '07/01 01:00',
+    });
+  });
+
+  it('clears paired reset metadata when newer observed usage lacks a reset timestamp', () => {
+    const activeQuota: CodexQuotaState = {
+      status: 'success',
+      fetchedAtMs: 1_000,
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 10,
+          resetLabel: '06/30 12:00',
+          limitWindowSeconds: 18_000,
+          resetAtMs: 3_000,
+          sampledAtMs: 1_000,
+        },
+      ],
+    };
+    const observedQuota: CodexQuotaState = {
+      status: 'success',
+      observedFromUsageHeaders: true,
+      observedAtMs: 2_000,
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 80,
+          resetLabel: '-',
+          limitWindowSeconds: 18_000,
+          resetAtMs: null,
+          sampledAtMs: 2_000,
+        },
+      ],
+    };
+
+    const result = resolveQuotaDisplayState(activeQuota, observedQuota) as CodexQuotaState;
+
+    expect(result.windows[0]).toMatchObject({
+      usedPercent: 80,
+      resetLabel: '-',
+      limitWindowSeconds: 18_000,
+      resetAtMs: null,
+      sampledAtMs: 2_000,
     });
   });
 
@@ -320,7 +370,7 @@ describe('resolveQuotaDisplayState', () => {
       id: 'five-hour',
       usedPercent: 80,
       resetLabel: '07/01 02:00',
-      limitWindowSeconds: 18_000,
+      limitWindowSeconds: null,
     });
     expect(result.windows[1]).toMatchObject({
       id: 'spark-five-hour-0',

@@ -114,8 +114,11 @@ import {
   type AuthFilesCodexStatusFilter,
 } from '@/features/authFiles/model/authFilesPageModel';
 import {
+  buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummaryMap,
   getAuthFileUsageSummaryKey,
+  getAuthFileUsageWindowTargetsSignature,
+  type AuthFileUsageWindowTarget,
 } from '@/features/authFiles/model/authFileUsageSummary';
 import {
   createCodexInspectionConnectionFingerprint,
@@ -200,6 +203,8 @@ const EMPTY_AUTH_FILE_USAGE_ROWS: AuthFileUsageRows = {
   retained: [],
   fiveHour: [],
   weekly: [],
+  windowSignature: getAuthFileUsageWindowTargetsSignature([]),
+  windowTargetsComplete: true,
 };
 
 export function AuthFilesPage() {
@@ -271,7 +276,9 @@ export function AuthFilesPage() {
   // the old context was invalidated.
   const cooldownReqId = useRef(0);
   const headerSnapshotReqId = useRef(0);
-  const authFileUsageReqId = useRef(0);
+  const authFileRetainedUsageReqId = useRef(0);
+  const authFileWindowUsageReqId = useRef(0);
+  const authFileWindowUsageSignatureRef = useRef('');
   // Tracks the context identity so the layout effect can detect cross-context
   // transitions synchronously (before passive effects fire) and invalidate any
   // in-flight request that belongs to the old context.
@@ -630,27 +637,90 @@ export function AuthFilesPage() {
     [savePastedAuthJson]
   );
 
-  const loadAuthFileUsageSummaries = useCallback(async () => {
+  const loadAuthFileRetainedUsageSummaries = useCallback(async () => {
     if (!managerServiceBase || !requestMonitoringAvailable) {
-      authFileUsageReqId.current += 1;
-      setAuthFileUsageRows(EMPTY_AUTH_FILE_USAGE_ROWS);
+      authFileRetainedUsageReqId.current += 1;
+      setAuthFileUsageRows((current) => ({ ...current, retained: [] }));
       return;
     }
 
-    const id = ++authFileUsageReqId.current;
+    const id = ++authFileRetainedUsageReqId.current;
     try {
       const nextRows = await fetchAuthFileUsageRows({
         managerServiceBase,
         managementKey,
+        windowTargets: [],
       });
-      if (id !== authFileUsageReqId.current) return;
-      setAuthFileUsageRows(nextRows);
+      if (id !== authFileRetainedUsageReqId.current) return;
+      setAuthFileUsageRows((current) => ({ ...current, retained: nextRows.retained }));
     } catch {
-      if (id === authFileUsageReqId.current) {
-        setAuthFileUsageRows(EMPTY_AUTH_FILE_USAGE_ROWS);
+      if (id === authFileRetainedUsageReqId.current) {
+        setAuthFileUsageRows((current) => ({ ...current, retained: [] }));
       }
     }
   }, [managementKey, managerServiceBase, requestMonitoringAvailable]);
+
+  const loadAuthFileWindowUsageSummaries = useCallback(
+    async (windowTargets: AuthFileUsageWindowTarget[]) => {
+      const windowSignature = getAuthFileUsageWindowTargetsSignature(windowTargets);
+      if (!managerServiceBase || !requestMonitoringAvailable || windowTargets.length === 0) {
+        authFileWindowUsageReqId.current += 1;
+        setAuthFileUsageRows((current) =>
+          current.fiveHour.length === 0 &&
+          current.weekly.length === 0 &&
+          current.windowSignature === windowSignature &&
+          current.windowTargetsComplete
+            ? current
+            : {
+                ...current,
+                fiveHour: [],
+                weekly: [],
+                windowSignature,
+                windowTargetsComplete: true,
+              }
+        );
+        return true;
+      }
+
+      const id = ++authFileWindowUsageReqId.current;
+      setAuthFileUsageRows((current) => ({
+        ...current,
+        fiveHour: [],
+        weekly: [],
+        windowSignature: '',
+        windowTargetsComplete: false,
+      }));
+      try {
+        const nextRows = await fetchAuthFileUsageRows({
+          managerServiceBase,
+          managementKey,
+          includeRetained: false,
+          windowTargets,
+        });
+        if (id !== authFileWindowUsageReqId.current) return false;
+        setAuthFileUsageRows((current) => ({
+          ...current,
+          fiveHour: nextRows.fiveHour,
+          weekly: nextRows.weekly,
+          windowSignature: nextRows.windowSignature,
+          windowTargetsComplete: nextRows.windowTargetsComplete,
+        }));
+        return nextRows.windowTargetsComplete;
+      } catch {
+        if (id === authFileWindowUsageReqId.current) {
+          setAuthFileUsageRows((current) => ({
+            ...current,
+            fiveHour: [],
+            weekly: [],
+            windowSignature,
+            windowTargetsComplete: false,
+          }));
+        }
+        return false;
+      }
+    },
+    [managementKey, managerServiceBase, requestMonitoringAvailable]
+  );
 
   const handleHeaderRefresh = useCallback(async () => {
     await Promise.all([
@@ -658,14 +728,14 @@ export function AuthFilesPage() {
       loadExcluded(),
       loadModelAlias(),
       loadCodexInspectionSnapshots(),
-      loadAuthFileUsageSummaries(),
+      loadAuthFileRetainedUsageSummaries(),
     ]);
   }, [
     loadFiles,
     loadExcluded,
     loadModelAlias,
     loadCodexInspectionSnapshots,
-    loadAuthFileUsageSummaries,
+    loadAuthFileRetainedUsageSummaries,
   ]);
 
   useHeaderRefresh(handleHeaderRefresh);
@@ -844,7 +914,8 @@ export function AuthFilesPage() {
   }, [managerServiceBase, managementKey]);
 
   useLayoutEffect(() => {
-    authFileUsageReqId.current += 1;
+    authFileRetainedUsageReqId.current += 1;
+    authFileWindowUsageReqId.current += 1;
     setAuthFileUsageRows(EMPTY_AUTH_FILE_USAGE_ROWS);
   }, [managerServiceBase, managementKey]);
 
@@ -852,13 +923,13 @@ export function AuthFilesPage() {
     if (!isCurrentLayer || !managerServiceBase) return;
     void loadQuotaCooldowns();
     void loadHeaderSnapshots();
-    void loadAuthFileUsageSummaries();
+    void loadAuthFileRetainedUsageSummaries();
   }, [
     isCurrentLayer,
     managerServiceBase,
     loadHeaderSnapshots,
     loadQuotaCooldowns,
-    loadAuthFileUsageSummaries,
+    loadAuthFileRetainedUsageSummaries,
   ]);
 
   useInterval(
@@ -1057,15 +1128,58 @@ export function AuthFilesPage() {
     return quotaMap;
   }, [files, getDisplayCodexQuota]);
 
+  const authFileUsageWindowTargets = useMemo(
+    () => buildAuthFileUsageWindowTargets(files, codexDisplayQuotaByAuthFileUsageKey),
+    [codexDisplayQuotaByAuthFileUsageKey, files]
+  );
+  const authFileUsageWindowTargetsSignature = useMemo(
+    () => getAuthFileUsageWindowTargetsSignature(authFileUsageWindowTargets),
+    [authFileUsageWindowTargets]
+  );
+
+  useEffect(() => {
+    if (!isCurrentLayer) {
+      authFileWindowUsageSignatureRef.current = '';
+      return;
+    }
+    const requestSignature = `${managerServiceBase}\u0000${managementKey}\u0000${requestMonitoringAvailable ? '1' : '0'}\u0000${authFileUsageWindowTargetsSignature}`;
+    if (requestSignature === authFileWindowUsageSignatureRef.current) return;
+    authFileWindowUsageSignatureRef.current = requestSignature;
+    void loadAuthFileWindowUsageSummaries(authFileUsageWindowTargets).then((complete) => {
+      if (!complete && authFileWindowUsageSignatureRef.current === requestSignature) {
+        authFileWindowUsageSignatureRef.current = '';
+      }
+    });
+  }, [
+    authFileUsageWindowTargets,
+    authFileUsageWindowTargetsSignature,
+    isCurrentLayer,
+    loadAuthFileWindowUsageSummaries,
+    managementKey,
+    managerServiceBase,
+    requestMonitoringAvailable,
+  ]);
+
   const authFileUsageSummaryByKey = useMemo(
     () =>
       buildAuthFileUsageSummaryMap(files, {
         retainedRows: authFileUsageRows.retained,
-        fiveHourRows: authFileUsageRows.fiveHour,
-        weeklyRows: authFileUsageRows.weekly,
+        fiveHourRows:
+          authFileUsageRows.windowSignature === authFileUsageWindowTargetsSignature
+            ? authFileUsageRows.fiveHour
+            : [],
+        weeklyRows:
+          authFileUsageRows.windowSignature === authFileUsageWindowTargetsSignature
+            ? authFileUsageRows.weekly
+            : [],
         codexQuotaByKey: codexDisplayQuotaByAuthFileUsageKey,
       }),
-    [authFileUsageRows, codexDisplayQuotaByAuthFileUsageKey, files]
+    [
+      authFileUsageRows,
+      authFileUsageWindowTargetsSignature,
+      codexDisplayQuotaByAuthFileUsageKey,
+      files,
+    ]
   );
 
   const filesMatchingStatusFilters = useMemo(

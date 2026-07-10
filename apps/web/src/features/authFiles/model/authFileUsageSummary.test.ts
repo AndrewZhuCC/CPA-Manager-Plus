@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { AuthFileItem, CodexQuotaState } from '@/types';
 import type { MonitoringAnalyticsCredentialStatRow } from '@/services/api/usageService';
 import {
+  buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummary,
   buildAuthFileUsageSummaryMap,
   getAuthFileUsageSummaryKey,
 } from './authFileUsageSummary';
+
+const QUOTA_SAMPLE_AT_MS = 2_000_000_000_000;
+const FIVE_HOUR_RESET_AT_MS = QUOTA_SAMPLE_AT_MS + 60 * 60 * 1000;
+const WEEKLY_RESET_AT_MS = QUOTA_SAMPLE_AT_MS + 24 * 60 * 60 * 1000;
 
 const credentialRow = (
   overrides: Partial<MonitoringAnalyticsCredentialStatRow>
@@ -44,6 +49,7 @@ const codexQuota = (overrides: Partial<CodexQuotaState> = {}): CodexQuotaState =
       usedPercent: 25,
       resetLabel: 'soon',
       limitWindowSeconds: 18_000,
+      resetAtMs: FIVE_HOUR_RESET_AT_MS,
     },
     {
       id: 'weekly',
@@ -51,12 +57,117 @@ const codexQuota = (overrides: Partial<CodexQuotaState> = {}): CodexQuotaState =
       usedPercent: 40,
       resetLabel: 'later',
       limitWindowSeconds: 604_800,
+      resetAtMs: WEEKLY_RESET_AT_MS,
     },
   ],
+  fetchedAtMs: QUOTA_SAMPLE_AT_MS,
   ...overrides,
 });
 
 describe('auth file usage summary model', () => {
+  it('builds per-credential analytics targets from the active provider reset windows', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+
+    const targets = buildAuthFileUsageWindowTargets(
+      [file],
+      new Map([[key, codexQuota()]]),
+      QUOTA_SAMPLE_AT_MS
+    );
+
+    expect(targets).toEqual([
+      {
+        key,
+        kind: 'fiveHour',
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: FIVE_HOUR_RESET_AT_MS - 18_000 * 1000,
+        toMs: QUOTA_SAMPLE_AT_MS,
+      },
+      {
+        key,
+        kind: 'weekly',
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: WEEKLY_RESET_AT_MS - 604_800 * 1000,
+        toMs: QUOTA_SAMPLE_AT_MS,
+      },
+    ]);
+  });
+
+  it('does not build trailing-range fallbacks for expired or missing reset metadata', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const quota = codexQuota({
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 25,
+          resetLabel: 'expired',
+          limitWindowSeconds: 18_000,
+          resetAtMs: QUOTA_SAMPLE_AT_MS - 1,
+        },
+        {
+          id: 'weekly',
+          label: 'Weekly limit',
+          usedPercent: 40,
+          resetLabel: '-',
+          limitWindowSeconds: 604_800,
+        },
+      ],
+    });
+
+    expect(
+      buildAuthFileUsageWindowTargets(
+        [file],
+        new Map([[key, quota]]),
+        QUOTA_SAMPLE_AT_MS
+      )
+    ).toEqual([]);
+  });
+
+  it('requires the provider window duration instead of inferring a trailing range', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const quota = codexQuota({
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 25,
+          resetLabel: 'soon',
+          resetAtMs: FIVE_HOUR_RESET_AT_MS,
+        },
+      ],
+    });
+
+    expect(
+      buildAuthFileUsageWindowTargets(
+        [file],
+        new Map([[key, quota]]),
+        QUOTA_SAMPLE_AT_MS
+      )
+    ).toEqual([]);
+
+    const summary = buildAuthFileUsageSummary(file, {
+      retainedRows: [],
+      fiveHourRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 5_000,
+          cost: 0.25,
+        }),
+      ],
+      weeklyRows: [],
+      codexQuota: quota,
+      nowMs: QUOTA_SAMPLE_AT_MS,
+    });
+
+    expect(summary).toBeUndefined();
+  });
+
   it('matches usage rows by auth file name and auth index', () => {
     const file: AuthFileItem = { name: 'shared-codex.json', type: 'codex', authIndex: '1' };
 
@@ -159,6 +270,7 @@ describe('auth file usage summary model', () => {
             usedPercent: 0,
             resetLabel: 'soon',
             limitWindowSeconds: 18_000,
+            resetAtMs: FIVE_HOUR_RESET_AT_MS,
           },
           {
             id: 'weekly',
@@ -166,6 +278,7 @@ describe('auth file usage summary model', () => {
             usedPercent: null,
             resetLabel: 'later',
             limitWindowSeconds: 604_800,
+            resetAtMs: WEEKLY_RESET_AT_MS,
           },
         ],
       }),
@@ -179,6 +292,46 @@ describe('auth file usage summary model', () => {
     expect(summary?.codexWeeklyLimitCost).toBeNull();
     expect(summary?.codexWeeklyRemainingTokens).toBeNull();
     expect(summary?.codexWeeklyRemainingCost).toBeNull();
+  });
+
+  it('keeps retained totals but refuses estimates when reset metadata is unavailable', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+
+    const summary = buildAuthFileUsageSummary(file, {
+      retainedRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 500_000,
+          cost: 25,
+        }),
+      ],
+      fiveHourRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 5_000,
+          cost: 0.25,
+        }),
+      ],
+      weeklyRows: [],
+      codexQuota: codexQuota({
+        windows: [
+          {
+            id: 'five-hour',
+            label: '5-hour limit',
+            usedPercent: 25,
+            resetLabel: '-',
+            limitWindowSeconds: 18_000,
+          },
+        ],
+      }),
+    });
+
+    expect(summary?.totalTokens).toBe(500_000);
+    expect(summary?.estimatedCost).toBe(25);
+    expect(summary?.codexFiveHourLimitTokens).toBeNull();
+    expect(summary?.codexFiveHourLimitCost).toBeNull();
   });
 
   it('builds a summary map without leaking same-name auth-indexed files', () => {

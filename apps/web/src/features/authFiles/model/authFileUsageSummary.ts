@@ -24,11 +24,30 @@ export type AuthFileUsageSummaryInput = {
   fiveHourRows: MonitoringAnalyticsCredentialStatRow[];
   weeklyRows: MonitoringAnalyticsCredentialStatRow[];
   codexQuota?: CodexQuotaState;
+  nowMs?: number;
 };
 
 export type AuthFileUsageSummaryMapInput = Omit<AuthFileUsageSummaryInput, 'codexQuota'> & {
   codexQuotaByKey: Map<string, CodexQuotaState | undefined>;
 };
+
+export type AuthFileUsageWindowKind = 'fiveHour' | 'weekly';
+
+export type AuthFileUsageWindowTarget = {
+  key: string;
+  kind: AuthFileUsageWindowKind;
+  authFileName: string;
+  authIndex: string | null;
+  fromMs: number;
+  toMs: number;
+};
+
+export const getAuthFileUsageWindowTargetsSignature = (
+  targets: AuthFileUsageWindowTarget[]
+): string =>
+  JSON.stringify(
+    targets.map((target) => [target.key, target.kind, target.fromMs, target.toMs] as const)
+  );
 
 const normalizeKey = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 
@@ -41,12 +60,20 @@ const normalizeAuthIndexKey = (value: unknown): string =>
 export const getAuthFileUsageSummaryKey = (file: AuthFileItem): string =>
   `${file.name}::${normalizeAuthIndexKey(getAuthFileAuthIndex(file))}`;
 
+export const credentialStatMatchesAuthFileIdentity = (
+  authFileName: string,
+  authIndex: string | null,
+  row: MonitoringAnalyticsCredentialStatRow
+): boolean => {
+  if (normalizeKey(row.auth_file_snapshot) !== normalizeKey(authFileName)) return false;
+  return normalizeAuthIndex(row.auth_index) === normalizeAuthIndex(authIndex);
+};
+
 const rowMatchesAuthFile = (
   file: AuthFileItem,
   row: MonitoringAnalyticsCredentialStatRow
 ): boolean => {
-  if (normalizeKey(row.auth_file_snapshot) !== normalizeKey(file.name)) return false;
-  return normalizeAuthIndex(row.auth_index) === getAuthFileAuthIndex(file);
+  return credentialStatMatchesAuthFileIdentity(file.name, getAuthFileAuthIndex(file), row);
 };
 
 const sumMatchingRows = (
@@ -100,6 +127,84 @@ const findCodexWeeklyWindow = (quota: CodexQuotaState | undefined) =>
     CODEX_WEEKLY_WINDOW_SECONDS
   );
 
+const normalizePositiveFiniteNumber = (value: unknown): number | null => {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+};
+
+const getCodexQuotaSampleAtMs = (
+  quota: CodexQuotaState | undefined,
+  window: CodexQuotaWindow | null
+): number | null => {
+  if (quota?.status !== 'success') return null;
+  if (window && Object.prototype.hasOwnProperty.call(window, 'sampledAtMs')) {
+    return normalizePositiveFiniteNumber(window.sampledAtMs);
+  }
+  if (quota.observedFromUsageHeaders === true) {
+    return normalizePositiveFiniteNumber(quota.observedAtMs);
+  }
+  return normalizePositiveFiniteNumber(quota.fetchedAtMs);
+};
+
+const isQuotaWindowPeriodUsable = (
+  quota: CodexQuotaState | undefined,
+  window: CodexQuotaWindow | null,
+  limitWindowSeconds: number,
+  nowMs: number
+): window is CodexQuotaWindow => {
+  const quotaSampleAtMs = getCodexQuotaSampleAtMs(quota, window);
+  const resetAtMs = normalizePositiveFiniteNumber(window?.resetAtMs);
+  const usedPercent = normalizePositiveFiniteNumber(window?.usedPercent);
+  if (quotaSampleAtMs === null || resetAtMs === null || usedPercent === null) return false;
+  if (!Number.isFinite(nowMs) || resetAtMs <= nowMs || quotaSampleAtMs >= resetAtMs) return false;
+  return quotaSampleAtMs >= resetAtMs - limitWindowSeconds * 1000;
+};
+
+const buildAuthFileUsageWindowTarget = (
+  file: AuthFileItem,
+  quota: CodexQuotaState | undefined,
+  kind: AuthFileUsageWindowKind,
+  nowMs: number
+): AuthFileUsageWindowTarget | null => {
+  const window =
+    kind === 'fiveHour' ? findCodexFiveHourWindow(quota) : findCodexWeeklyWindow(quota);
+  const limitWindowSeconds = normalizeWindowSeconds(window?.limitWindowSeconds);
+  if (limitWindowSeconds === null) return null;
+  if (!isQuotaWindowPeriodUsable(quota, window, limitWindowSeconds, nowMs)) return null;
+
+  const resetAtMs = normalizePositiveFiniteNumber(window.resetAtMs);
+  const quotaSampleAtMs = getCodexQuotaSampleAtMs(quota, window);
+  if (resetAtMs === null || quotaSampleAtMs === null) return null;
+
+  return {
+    key: getAuthFileUsageSummaryKey(file),
+    kind,
+    authFileName: file.name,
+    authIndex: getAuthFileAuthIndex(file),
+    fromMs: resetAtMs - limitWindowSeconds * 1000,
+    toMs: quotaSampleAtMs,
+  };
+};
+
+export const buildAuthFileUsageWindowTargets = (
+  files: AuthFileItem[],
+  codexQuotaByKey: Map<string, CodexQuotaState | undefined>,
+  nowMs = Date.now()
+): AuthFileUsageWindowTarget[] => {
+  const targets = new Map<string, AuthFileUsageWindowTarget>();
+
+  files.forEach((file) => {
+    const key = getAuthFileUsageSummaryKey(file);
+    const quota = codexQuotaByKey.get(key);
+    (['fiveHour', 'weekly'] as const).forEach((kind) => {
+      const target = buildAuthFileUsageWindowTarget(file, quota, kind, nowMs);
+      if (target) targets.set(`${key}:${kind}`, target);
+    });
+  });
+
+  return Array.from(targets.values());
+};
+
 const estimateLimitValue = (
   value: number,
   usedPercent: unknown,
@@ -146,14 +251,35 @@ export const buildAuthFileUsageSummary = (
   const weekly = sumMatchingRows(file, input.weeklyRows);
   const fiveHourQuotaWindow = findCodexFiveHourWindow(input.codexQuota);
   const weeklyQuotaWindow = findCodexWeeklyWindow(input.codexQuota);
+  const fiveHourWindowSeconds = normalizeWindowSeconds(
+    fiveHourQuotaWindow?.limitWindowSeconds
+  );
+  const weeklyWindowSeconds = normalizeWindowSeconds(weeklyQuotaWindow?.limitWindowSeconds);
+  const nowMs = input.nowMs ?? Date.now();
+  const usableFiveHourWindow =
+    fiveHourWindowSeconds !== null &&
+    isQuotaWindowPeriodUsable(
+      input.codexQuota,
+      fiveHourQuotaWindow,
+      fiveHourWindowSeconds,
+      nowMs
+    );
+  const usableWeeklyWindow =
+    weeklyWindowSeconds !== null &&
+    isQuotaWindowPeriodUsable(
+      input.codexQuota,
+      weeklyQuotaWindow,
+      weeklyWindowSeconds,
+      nowMs
+    );
   const fiveHourLimitTokens = estimateTokenLimit(
     fiveHour.totalTokens,
-    fiveHourQuotaWindow?.usedPercent
+    usableFiveHourWindow ? fiveHourQuotaWindow.usedPercent : null
   );
   const fiveHourLimitCost = estimateCostLimit(
     fiveHour.estimatedCost,
     fiveHour.totalTokens,
-    fiveHourQuotaWindow?.usedPercent
+    usableFiveHourWindow ? fiveHourQuotaWindow.usedPercent : null
   );
   const fiveHourRemainingTokens = estimateRemainingTokens(
     fiveHourLimitTokens,
@@ -163,11 +289,14 @@ export const buildAuthFileUsageSummary = (
     fiveHourLimitCost,
     fiveHour.estimatedCost
   );
-  const weeklyLimitTokens = estimateTokenLimit(weekly.totalTokens, weeklyQuotaWindow?.usedPercent);
+  const weeklyLimitTokens = estimateTokenLimit(
+    weekly.totalTokens,
+    usableWeeklyWindow ? weeklyQuotaWindow.usedPercent : null
+  );
   const weeklyLimitCost = estimateCostLimit(
     weekly.estimatedCost,
     weekly.totalTokens,
-    weeklyQuotaWindow?.usedPercent
+    usableWeeklyWindow ? weeklyQuotaWindow.usedPercent : null
   );
   const weeklyRemainingTokens = estimateRemainingTokens(weeklyLimitTokens, weekly.totalTokens);
   const weeklyRemainingCost = estimateRemainingCost(weeklyLimitCost, weekly.estimatedCost);
@@ -213,6 +342,7 @@ export const buildAuthFileUsageSummaryMap = (
       fiveHourRows: input.fiveHourRows,
       weeklyRows: input.weeklyRows,
       codexQuota: input.codexQuotaByKey.get(key),
+      nowMs: input.nowMs,
     });
     if (summary) summaries.set(key, summary);
   });

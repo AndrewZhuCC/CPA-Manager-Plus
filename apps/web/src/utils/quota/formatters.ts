@@ -32,18 +32,30 @@ export function formatUnixSeconds(value: number | null): string {
   });
 }
 
-export function formatCodexResetLabel(window?: CodexUsageWindow | null): string {
-  if (!window) return '-';
+const UNIX_MILLISECONDS_THRESHOLD = 100_000_000_000;
+
+export function resolveCodexResetAtMs(
+  window?: CodexUsageWindow | null,
+  nowMs = Date.now()
+): number | null {
+  if (!window) return null;
   const resetAt = normalizeNumberValue(window.reset_at ?? window.resetAt);
   if (resetAt !== null && resetAt > 0) {
-    return formatUnixSeconds(resetAt);
+    return resetAt >= UNIX_MILLISECONDS_THRESHOLD ? resetAt : resetAt * 1000;
   }
   const resetAfter = normalizeNumberValue(window.reset_after_seconds ?? window.resetAfterSeconds);
-  if (resetAfter !== null && resetAfter > 0) {
-    const targetSeconds = Math.floor(Date.now() / 1000 + resetAfter);
-    return formatUnixSeconds(targetSeconds);
+  if (resetAfter !== null && resetAfter > 0 && Number.isFinite(nowMs)) {
+    return nowMs + resetAfter * 1000;
   }
-  return '-';
+  return null;
+}
+
+export function formatCodexResetLabel(
+  window?: CodexUsageWindow | null,
+  nowMs = Date.now()
+): string {
+  const resetAtMs = resolveCodexResetAtMs(window, nowMs);
+  return resetAtMs === null ? '-' : formatUnixSeconds(resetAtMs / 1000);
 }
 
 export function createStatusError(message: string, status?: number): Error & { status?: number } {

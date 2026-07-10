@@ -318,6 +318,8 @@ export interface CodexQuotaWindow {
   usedPercent: number | null;
   resetLabel: string;
   limitWindowSeconds?: number | null;
+  resetAtMs?: number | null;
+  sampledAtMs?: number | null;
 }
 
 export interface CodexQuotaState {

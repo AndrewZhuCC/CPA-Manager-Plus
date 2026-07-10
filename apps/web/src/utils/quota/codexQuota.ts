@@ -4,7 +4,7 @@ import type {
   CodexUsagePayload,
   CodexUsageWindow,
 } from '@/types';
-import { formatCodexResetLabel } from './formatters';
+import { formatCodexResetLabel, resolveCodexResetAtMs } from './formatters';
 import { normalizeNumberValue, normalizePlanType, normalizeStringValue } from './parsers';
 
 const FIVE_HOUR_SECONDS = 18_000;
@@ -43,6 +43,8 @@ export type CodexQuotaWindowInfo = {
   usedPercent: number | null;
   resetLabel: string;
   limitWindowSeconds: number | null;
+  resetAtMs: number | null;
+  sampledAtMs: number;
 };
 
 const getWindowSeconds = (window?: CodexUsageWindow | null): number | null => {
@@ -183,11 +185,14 @@ const addCodexWindowInfo = (
   labelParams: Record<string, string | number> | undefined,
   window?: CodexUsageWindow | null,
   limitReached?: boolean,
-  allowed?: boolean
+  allowed?: boolean,
+  nowMs = Date.now()
 ) => {
   if (!window) return;
 
-  const resetLabel = formatCodexResetLabel(window);
+  const sampledAtMs = Number.isFinite(nowMs) && nowMs > 0 ? nowMs : Date.now();
+  const resetAtMs = resolveCodexResetAtMs(window, sampledAtMs);
+  const resetLabel = formatCodexResetLabel(window, sampledAtMs);
   const usedPercentRaw = getCodexQuotaWindowUsedPercent(window);
   const isLimitReached = Boolean(limitReached) || allowed === false;
   const usedPercent = usedPercentRaw ?? (isLimitReached && resetLabel !== '-' ? 100 : null);
@@ -199,6 +204,8 @@ const addCodexWindowInfo = (
     usedPercent,
     resetLabel,
     limitWindowSeconds: getWindowSeconds(window),
+    resetAtMs,
+    sampledAtMs,
   });
 };
 
@@ -210,7 +217,7 @@ const addCodexRateLimitWindows = (
   monthlyMeta: CodexQuotaWindowMeta,
   genericLabelKey: string,
   genericLabelParams?: Record<string, string | number>,
-  options?: { teamPlan?: boolean }
+  options?: { teamPlan?: boolean; nowMs?: number }
 ) => {
   const limitReached = limitInfo?.limit_reached ?? limitInfo?.limitReached;
   const allowed = limitInfo?.allowed;
@@ -224,7 +231,8 @@ const addCodexRateLimitWindows = (
     genericLabelParams,
     classified.fiveHourWindow,
     limitReached,
-    allowed
+    allowed,
+    options?.nowMs
   );
   if (classified.fiveHourWindow) added.add(classified.fiveHourWindow);
   addCodexWindowInfo(
@@ -234,7 +242,8 @@ const addCodexRateLimitWindows = (
     genericLabelParams,
     classified.weeklyWindow,
     limitReached,
-    allowed
+    allowed,
+    options?.nowMs
   );
   if (classified.weeklyWindow) added.add(classified.weeklyWindow);
   addCodexWindowInfo(
@@ -244,7 +253,8 @@ const addCodexRateLimitWindows = (
     genericLabelParams,
     classified.monthlyWindow,
     limitReached,
-    allowed
+    allowed,
+    options?.nowMs
   );
   if (classified.monthlyWindow) added.add(classified.monthlyWindow);
 
@@ -259,7 +269,8 @@ const addCodexRateLimitWindows = (
       { ...genericLabelParams, duration },
       window,
       limitReached,
-      allowed
+      allowed,
+      options?.nowMs
     );
   });
 };
@@ -267,7 +278,7 @@ const addCodexRateLimitWindows = (
 const addAdditionalRateLimitWindows = (
   windows: CodexQuotaWindowInfo[],
   additionalRateLimits: CodexAdditionalRateLimit[] | null | undefined,
-  options?: { teamPlan?: boolean }
+  options?: { teamPlan?: boolean; nowMs?: number }
 ) => {
   if (!Array.isArray(additionalRateLimits)) return;
 
@@ -305,7 +316,7 @@ const addAdditionalRateLimitWindows = (
 
 export const buildCodexQuotaWindowInfos = (
   payload: CodexUsagePayload,
-  options?: { planType?: string | null }
+  options?: { planType?: string | null; nowMs?: number }
 ): CodexQuotaWindowInfo[] => {
   const windows: CodexQuotaWindowInfo[] = [];
   const rateLimit = payload.rate_limit ?? payload.rateLimit ?? undefined;
@@ -323,7 +334,7 @@ export const buildCodexQuotaWindowInfos = (
     CODEX_WINDOW_META.codeMonthly,
     'codex_quota.generic_window',
     undefined,
-    { teamPlan }
+    { teamPlan, nowMs: options?.nowMs }
   );
   addCodexRateLimitWindows(
     windows,
@@ -333,9 +344,12 @@ export const buildCodexQuotaWindowInfos = (
     CODEX_WINDOW_META.codeReviewMonthly,
     'codex_quota.code_review_generic_window',
     undefined,
-    { teamPlan }
+    { teamPlan, nowMs: options?.nowMs }
   );
-  addAdditionalRateLimitWindows(windows, additionalRateLimits, { teamPlan });
+  addAdditionalRateLimitWindows(windows, additionalRateLimits, {
+    teamPlan,
+    nowMs: options?.nowMs,
+  });
 
   return windows;
 };

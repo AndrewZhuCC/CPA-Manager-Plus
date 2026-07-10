@@ -7,6 +7,38 @@ import {
 } from './codexQuota';
 
 describe('buildCodexQuotaWindowInfos', () => {
+  it('normalizes absolute and relative reset timestamps against the quota sample time', () => {
+    const nowMs = 1_700_000_000_000;
+    const windows = buildCodexQuotaWindowInfos(
+      {
+        rate_limit: {
+          primary_window: {
+            used_percent: 25,
+            limit_window_seconds: 18_000,
+            reset_after_seconds: 900,
+          },
+          secondary_window: {
+            used_percent: 40,
+            limit_window_seconds: 604_800,
+            reset_at: 1_700_604_800,
+          },
+        },
+      },
+      { nowMs }
+    );
+
+    expect(windows).toMatchObject([
+      {
+        id: 'five-hour',
+        resetAtMs: nowMs + 900_000,
+      },
+      {
+        id: 'weekly',
+        resetAtMs: 1_700_604_800_000,
+      },
+    ]);
+  });
+
   it('classifies Codex primary and weekly windows by duration', () => {
     const windows = buildCodexQuotaWindowInfos({
       rate_limit: {

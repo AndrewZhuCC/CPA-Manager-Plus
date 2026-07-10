@@ -554,6 +554,9 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
   });
 
   it('passes credential usage summaries from monitoring analytics to auth file cards', async () => {
+    const quotaSampleAtMs = Date.now() - 1_000;
+    const fiveHourResetAtMs = quotaSampleAtMs + 60 * 60 * 1000;
+    const weeklyResetAtMs = quotaSampleAtMs + 24 * 60 * 60 * 1000;
     mocks.list.mockReturnValue([
       { name: 'codex-one.json', type: 'codex', authIndex: '0' },
       { name: 'codex-two.json', type: 'codex', authIndex: '0' },
@@ -565,6 +568,7 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
         authFileName: 'codex-one.json',
         authIndex: '0',
         planType: 'plus',
+        fetchedAtMs: quotaSampleAtMs,
         windows: [
           {
             id: 'five-hour',
@@ -573,6 +577,7 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
             usedPercent: 25,
             resetLabel: 'soon',
             limitWindowSeconds: 18_000,
+            resetAtMs: fiveHourResetAtMs,
           },
           {
             id: 'weekly',
@@ -581,47 +586,58 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
             usedPercent: 40,
             resetLabel: 'later',
             limitWindowSeconds: 604_800,
+            resetAtMs: weeklyResetAtMs,
           },
         ],
       },
     };
-    mocks.getAnalytics
-      .mockResolvedValueOnce(
-        analyticsResponse([
-          credentialStatsRow({
-            auth_file_snapshot: 'codex-one.json',
-            auth_index: '0',
-            total_tokens: 50_000,
-            cost: 1.5,
-          }),
-          credentialStatsRow({
-            auth_file_snapshot: 'codex-one.json',
-            auth_index: '1',
-            total_tokens: 99_000,
-            cost: 9.9,
-          }),
-        ])
-      )
-      .mockResolvedValueOnce(
-        analyticsResponse([
-          credentialStatsRow({
-            auth_file_snapshot: 'codex-one.json',
-            auth_index: '0',
-            total_tokens: 5_000,
-            cost: 0.25,
-          }),
-        ])
-      )
-      .mockResolvedValueOnce(
-        analyticsResponse([
-          credentialStatsRow({
-            auth_file_snapshot: 'codex-one.json',
-            auth_index: '0',
-            total_tokens: 28_000,
-            cost: 2.8,
-          }),
-        ])
-      );
+    mocks.getAnalytics.mockImplementation(
+      (_base: string, _key: string, request: { from_ms: number }) => {
+        if (request.from_ms === 1) {
+          return Promise.resolve(
+            analyticsResponse([
+              credentialStatsRow({
+                auth_file_snapshot: 'codex-one.json',
+                auth_index: '0',
+                total_tokens: 50_000,
+                cost: 1.5,
+              }),
+              credentialStatsRow({
+                auth_file_snapshot: 'codex-one.json',
+                auth_index: '1',
+                total_tokens: 99_000,
+                cost: 9.9,
+              }),
+            ])
+          );
+        }
+        if (request.from_ms === fiveHourResetAtMs - 18_000 * 1000) {
+          return Promise.resolve(
+            analyticsResponse([
+              credentialStatsRow({
+                auth_file_snapshot: 'codex-one.json',
+                auth_index: '0',
+                total_tokens: 5_000,
+                cost: 0.25,
+              }),
+            ])
+          );
+        }
+        if (request.from_ms === weeklyResetAtMs - 604_800 * 1000) {
+          return Promise.resolve(
+            analyticsResponse([
+              credentialStatsRow({
+                auth_file_snapshot: 'codex-one.json',
+                auth_index: '0',
+                total_tokens: 28_000,
+                cost: 2.8,
+              }),
+            ])
+          );
+        }
+        return Promise.resolve(analyticsResponse());
+      }
+    );
 
     let renderer: ReactTestRenderer;
     await act(async () => {
@@ -643,7 +659,30 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
     expect(card.props['data-usage-weekly-estimate']).toBe('70000');
     expect(card.props['data-usage-weekly-cost-estimate']).toBe('7');
     expect(mocks.getAnalytics).toHaveBeenCalledTimes(3);
-    expect(mocks.getAnalytics.mock.calls[0]?.[2].include).toEqual({ credential_stats: true });
+    expect(
+      mocks.getAnalytics.mock.calls.map((call) => call[2]).filter((request) => request.filters)
+    ).toEqual([
+      {
+        from_ms: fiveHourResetAtMs - 18_000 * 1000,
+        to_ms: quotaSampleAtMs,
+        now_ms: quotaSampleAtMs,
+        filters: {
+          auth_files: ['codex-one.json'],
+          auth_indices: ['0'],
+        },
+        include: { credential_stats: true },
+      },
+      {
+        from_ms: weeklyResetAtMs - 604_800 * 1000,
+        to_ms: quotaSampleAtMs,
+        now_ms: quotaSampleAtMs,
+        filters: {
+          auth_files: ['codex-one.json'],
+          auth_indices: ['0'],
+        },
+        include: { credential_stats: true },
+      },
+    ]);
   });
 
   it('refreshes Codex quota instead of showing expired usage response headers', async () => {

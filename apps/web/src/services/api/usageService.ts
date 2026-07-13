@@ -624,6 +624,8 @@ export interface MonitoringAnalyticsDrilldownPreviewRequest {
 
 export interface MonitoringAnalyticsInclude {
   summary?: boolean;
+  summary_profile?: 'full' | 'compact';
+  summary_percentiles?: boolean;
   summary_comparison?: boolean;
   timeline?: boolean;
   hourly_distribution?: boolean;
@@ -636,6 +638,7 @@ export interface MonitoringAnalyticsInclude {
   credential_timeline?: boolean;
   api_key_stats?: boolean;
   filter_options?: boolean;
+  filter_selectors?: boolean;
   heatmap?: boolean;
   anomaly_points?: boolean;
   task_buckets?: boolean;
@@ -666,6 +669,7 @@ export interface MonitoringAnalyticsSummary {
   cached_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  cache_hit_rate?: number;
   reasoning_tokens: number;
   total_tokens: number;
   total_cost: number;
@@ -708,6 +712,7 @@ export interface MonitoringAnalyticsTimelinePoint {
   cached_tokens?: number;
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
+  cache_hit_rate?: number;
   reasoning_tokens?: number;
   total_tokens?: number;
   cost?: number;
@@ -788,6 +793,9 @@ export interface MonitoringAnalyticsModelStat {
   cached_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  cache_hit_tokens?: number;
+  cache_hit_input_tokens?: number;
+  cache_hit_rate?: number;
   total_tokens: number;
   cost: number;
 }
@@ -830,6 +838,9 @@ export interface MonitoringAnalyticsAccountModelStatRow {
   cached_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  cache_hit_tokens?: number;
+  cache_hit_input_tokens?: number;
+  cache_hit_rate?: number;
   total_tokens: number;
   cost: number;
   last_seen_ms: number;
@@ -965,6 +976,8 @@ export interface MonitoringAnalyticsFilterOptions {
   api_key_stats?: MonitoringAnalyticsApiKeyStatRow[];
   channel_share?: MonitoringAnalyticsChannelShareRow[];
   model_stats?: MonitoringAnalyticsModelStat[];
+  models?: string[];
+  api_key_hashes?: string[];
   providers?: string[];
   auth_files?: string[];
   project_ids?: string[];

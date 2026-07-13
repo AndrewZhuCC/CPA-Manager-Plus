@@ -2128,6 +2128,13 @@ func fillAPIKeyStatSnapshots(row *APIKeyStatRow, apiKeyHash, accountSnapshot, au
 }
 
 func credentialGroupKey(stat store.CredentialModelStat) string {
+	authFile := strings.TrimSpace(stat.AuthFileSnapshot)
+	authIndex := strings.TrimSpace(stat.AuthIndex)
+	// One auth file can contain multiple accounts. The file name alone is not a
+	// credential identity once an auth index is available.
+	if authFile != "" && authIndex != "" {
+		return authFile + "::" + authIndex
+	}
 	for _, value := range []string{stat.ID, stat.AuthFileSnapshot, stat.AuthIndex, stat.SourceHash, stat.Source} {
 		trimmed := strings.TrimSpace(value)
 		if trimmed != "" {

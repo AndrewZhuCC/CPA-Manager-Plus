@@ -9,6 +9,7 @@ const summary = (
 ): AuthFileUsageSummary => ({
   estimatedCost: 0,
   totalTokens: 0,
+  recordedUsageAvailable: true,
   codexFiveHourLimitTokens: null,
   codexFiveHourLimitCost: null,
   codexFiveHourRemainingTokens: null,
@@ -79,6 +80,74 @@ describe('Codex quota aggregate summary', () => {
         remainingCost: null,
         estimatedCredentialCount: 0,
         eligibleCredentialCount: 1,
+      },
+    });
+  });
+
+  it('counts eligibility separately for mixed weekly-only and five-hour credentials', () => {
+    const files: AuthFileItem[] = [
+      { name: 'k12.json', type: 'codex', authIndex: '0' },
+      { name: 'plus.json', type: 'codex', authIndex: '0' },
+    ];
+    const summaries = new Map<string, AuthFileUsageSummary>([
+      [
+        getAuthFileUsageSummaryKey(files[0]),
+        summary({
+          codexFiveHourRemainingTokens: 15_000,
+          codexFiveHourRemainingCost: 0.75,
+          codexWeeklyRemainingTokens: 42_000,
+          codexWeeklyRemainingCost: 4.2,
+        }),
+      ],
+      [
+        getAuthFileUsageSummaryKey(files[1]),
+        summary({
+          codexFiveHourRemainingTokens: 999_999,
+          codexFiveHourRemainingCost: 999.99,
+          codexWeeklyRemainingTokens: 58_000,
+          codexWeeklyRemainingCost: 5.8,
+        }),
+      ],
+    ]);
+    const targets = [
+      {
+        key: getAuthFileUsageSummaryKey(files[0]),
+        kind: 'fiveHour' as const,
+        authFileName: files[0].name,
+        authIndex: '0',
+        fromMs: 1,
+        toMs: 2,
+      },
+      {
+        key: getAuthFileUsageSummaryKey(files[0]),
+        kind: 'weekly' as const,
+        authFileName: files[0].name,
+        authIndex: '0',
+        fromMs: 1,
+        toMs: 2,
+      },
+      {
+        key: getAuthFileUsageSummaryKey(files[1]),
+        kind: 'weekly' as const,
+        authFileName: files[1].name,
+        authIndex: '0',
+        fromMs: 1,
+        toMs: 2,
+      },
+    ];
+
+    expect(buildCodexQuotaAggregateSummary(files, summaries, targets)).toEqual({
+      fiveHour: {
+        remainingTokens: 15_000,
+        remainingCost: 0.75,
+        estimatedCredentialCount: 1,
+        eligibleCredentialCount: 1,
+      },
+      weekly: {
+        remainingTokens: 100_000,
+        remainingCost: 10,
+        estimatedCredentialCount: 2,
+        eligibleCredentialCount: 2,
       },
     });
   });

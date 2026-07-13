@@ -9,6 +9,7 @@ const CODEX_WEEKLY_WINDOW_SECONDS = 604_800;
 export type AuthFileUsageSummary = {
   estimatedCost: number;
   totalTokens: number;
+  recordedUsageAvailable: boolean;
   codexFiveHourLimitTokens: number | null;
   codexFiveHourLimitCost: number | null;
   codexFiveHourRemainingTokens: number | null;
@@ -21,6 +22,7 @@ export type AuthFileUsageSummary = {
 
 export type AuthFileUsageSummaryInput = {
   retainedRows: MonitoringAnalyticsCredentialStatRow[];
+  retainedAvailable?: boolean;
   fiveHourRows: MonitoringAnalyticsCredentialStatRow[];
   weeklyRows: MonitoringAnalyticsCredentialStatRow[];
   codexQuota?: CodexQuotaState;
@@ -100,32 +102,21 @@ const normalizeWindowSeconds = (value: unknown): number | null => {
 
 const findCodexQuotaWindow = (
   quota: CodexQuotaState | undefined,
-  preferredMatch: (window: CodexQuotaWindow) => boolean,
   limitWindowSeconds: number
 ): CodexQuotaWindow | null => {
   const windows = quota?.windows ?? [];
   return (
-    windows.find(preferredMatch) ??
     windows.find(
       (window) => normalizeWindowSeconds(window.limitWindowSeconds) === limitWindowSeconds
-    ) ??
-    null
+    ) ?? null
   );
 };
 
 const findCodexFiveHourWindow = (quota: CodexQuotaState | undefined) =>
-  findCodexQuotaWindow(
-    quota,
-    (window) => window.id === 'five-hour' || window.labelKey === 'codex_quota.primary_window',
-    CODEX_FIVE_HOUR_WINDOW_SECONDS
-  );
+  findCodexQuotaWindow(quota, CODEX_FIVE_HOUR_WINDOW_SECONDS);
 
 const findCodexWeeklyWindow = (quota: CodexQuotaState | undefined) =>
-  findCodexQuotaWindow(
-    quota,
-    (window) => window.id === 'weekly' || window.labelKey === 'codex_quota.secondary_window',
-    CODEX_WEEKLY_WINDOW_SECONDS
-  );
+  findCodexQuotaWindow(quota, CODEX_WEEKLY_WINDOW_SECONDS);
 
 const normalizePositiveFiniteNumber = (value: unknown): number | null => {
   const numberValue = typeof value === 'number' ? value : Number(value);
@@ -249,6 +240,10 @@ export const buildAuthFileUsageSummary = (
   const retained = sumMatchingRows(file, input.retainedRows);
   const fiveHour = sumMatchingRows(file, input.fiveHourRows);
   const weekly = sumMatchingRows(file, input.weeklyRows);
+  const retainedAvailable = input.retainedAvailable ?? true;
+  const hasWindowUsage = fiveHour.totalTokens > 0 || weekly.totalTokens > 0;
+  const recordedUsageAvailable =
+    retainedAvailable && !(retained.totalTokens <= 0 && hasWindowUsage);
   const fiveHourQuotaWindow = findCodexFiveHourWindow(input.codexQuota);
   const weeklyQuotaWindow = findCodexWeeklyWindow(input.codexQuota);
   const fiveHourWindowSeconds = normalizeWindowSeconds(
@@ -319,6 +314,7 @@ export const buildAuthFileUsageSummary = (
   return {
     estimatedCost: retained.estimatedCost,
     totalTokens: retained.totalTokens,
+    recordedUsageAvailable,
     codexFiveHourLimitTokens: fiveHourLimitTokens,
     codexFiveHourLimitCost: fiveHourLimitCost,
     codexFiveHourRemainingTokens: fiveHourRemainingTokens,
@@ -339,6 +335,7 @@ export const buildAuthFileUsageSummaryMap = (
     const key = getAuthFileUsageSummaryKey(file);
     const summary = buildAuthFileUsageSummary(file, {
       retainedRows: input.retainedRows,
+      retainedAvailable: input.retainedAvailable,
       fiveHourRows: input.fiveHourRows,
       weeklyRows: input.weeklyRows,
       codexQuota: input.codexQuotaByKey.get(key),

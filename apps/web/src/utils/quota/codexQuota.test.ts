@@ -61,6 +61,33 @@ describe('buildCodexQuotaWindowInfos', () => {
     ]);
   });
 
+  it('classifies a weekly-only Plus quota without inventing a five-hour window', () => {
+    const payload = {
+      plan_type: 'plus',
+      rate_limit: {
+        primary_window: {
+          used_percent: 16,
+          limit_window_seconds: 604_800,
+          reset_after_seconds: 86_400,
+        },
+        secondary_window: null,
+      },
+    };
+
+    const windows = buildCodexQuotaWindowInfos(payload);
+    const classified = classifyCodexRateLimitWindows(payload.rate_limit);
+
+    expect(windows).toMatchObject([
+      {
+        id: 'weekly',
+        usedPercent: 16,
+        limitWindowSeconds: 604_800,
+      },
+    ]);
+    expect(classified.fiveHourWindow).toBeNull();
+    expect(classified.weeklyWindow).toBe(payload.rate_limit.primary_window);
+  });
+
   it('marks reached windows as fully used when usage percent is absent', () => {
     const windows = buildCodexQuotaWindowInfos({
       rate_limit: {

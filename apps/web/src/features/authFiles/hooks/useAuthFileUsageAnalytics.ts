@@ -19,6 +19,7 @@ const AUTH_FILE_USAGE_ANALYTICS_INCLUDE = {
 
 export type AuthFileUsageRows = {
   retained: MonitoringAnalyticsCredentialStatRow[];
+  retainedAvailable: boolean;
   fiveHour: MonitoringAnalyticsCredentialStatRow[];
   weekly: MonitoringAnalyticsCredentialStatRow[];
   windowSignature: string;
@@ -27,6 +28,7 @@ export type AuthFileUsageRows = {
 
 const createEmptyRows = (): AuthFileUsageRows => ({
   retained: [],
+  retainedAvailable: false,
   fiveHour: [],
   weekly: [],
   windowSignature: getAuthFileUsageWindowTargetsSignature([]),
@@ -41,6 +43,7 @@ export interface FetchAuthFileUsageRowsOptions {
   managerServiceBase: string;
   managementKey: string;
   includeRetained?: boolean;
+  retainedAuthFileNames?: string[];
   windowTargets?: AuthFileUsageWindowTarget[];
 }
 
@@ -115,9 +118,13 @@ export async function fetchAuthFileUsageRows({
   managerServiceBase,
   managementKey,
   includeRetained = true,
+  retainedAuthFileNames = [],
   windowTargets = [],
 }: FetchAuthFileUsageRowsOptions): Promise<AuthFileUsageRows> {
   const nowMs = Date.now();
+  const retainedFiles = Array.from(
+    new Set(retainedAuthFileNames.map((name) => name.trim()).filter(Boolean))
+  );
   const retainedRequest = includeRetained
     ? monitoringAnalyticsApi.getAnalytics(
         managerServiceBase,
@@ -126,17 +133,23 @@ export async function fetchAuthFileUsageRows({
           from_ms: AUTH_FILE_USAGE_HISTORY_FROM_MS,
           to_ms: nowMs,
           now_ms: nowMs,
+          ...(retainedFiles.length > 0
+            ? { filters: { auth_files: retainedFiles } }
+            : {}),
           include: AUTH_FILE_USAGE_ANALYTICS_INCLUDE,
         }
-      ).catch(() => null)
-    : Promise.resolve(null);
+      )
+        .then((response) => ({ response, available: true }))
+        .catch(() => ({ response: null, available: false }))
+    : Promise.resolve({ response: null, available: false });
   const [retained, windowRows] = await Promise.all([
     retainedRequest,
     fetchWindowRows(managerServiceBase, managementKey, windowTargets),
   ]);
 
   return {
-    retained: readCredentialStats(retained),
+    retained: readCredentialStats(retained.response),
+    retainedAvailable: retained.available,
     fiveHour: windowRows.fiveHour,
     weekly: windowRows.weekly,
     windowSignature: getAuthFileUsageWindowTargetsSignature(windowTargets),
@@ -173,6 +186,7 @@ export function useAuthFileUsageAnalytics({
     setLoading(true);
     setRows((current) => ({
       retained: includeRetained ? current.retained : [],
+      retainedAvailable: includeRetained ? current.retainedAvailable : false,
       fiveHour: [],
       weekly: [],
       windowSignature: '',

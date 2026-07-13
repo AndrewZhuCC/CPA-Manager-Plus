@@ -208,6 +208,7 @@ const getQuotaCooldownContextKey = (managerServiceBase: string, managementKey: s
 
 const EMPTY_AUTH_FILE_USAGE_ROWS: AuthFileUsageRows = {
   retained: [],
+  retainedAvailable: false,
   fiveHour: [],
   weekly: [],
   windowSignature: getAuthFileUsageWindowTargetsSignature([]),
@@ -647,9 +648,18 @@ export function AuthFilesPage() {
   );
 
   const loadAuthFileRetainedUsageSummaries = useCallback(async () => {
-    if (!managerServiceBase || !requestMonitoringAvailable) {
+    const retainedAuthFileNames = files.map((file) => file.name).filter(Boolean);
+    if (
+      !managerServiceBase ||
+      !requestMonitoringAvailable ||
+      retainedAuthFileNames.length === 0
+    ) {
       authFileRetainedUsageReqId.current += 1;
-      setAuthFileUsageRows((current) => ({ ...current, retained: [] }));
+      setAuthFileUsageRows((current) => ({
+        ...current,
+        retained: [],
+        retainedAvailable: false,
+      }));
       return;
     }
 
@@ -658,16 +668,25 @@ export function AuthFilesPage() {
       const nextRows = await fetchAuthFileUsageRows({
         managerServiceBase,
         managementKey,
+        retainedAuthFileNames,
         windowTargets: [],
       });
       if (id !== authFileRetainedUsageReqId.current) return;
-      setAuthFileUsageRows((current) => ({ ...current, retained: nextRows.retained }));
+      setAuthFileUsageRows((current) => ({
+        ...current,
+        retained: nextRows.retained,
+        retainedAvailable: nextRows.retainedAvailable,
+      }));
     } catch {
       if (id === authFileRetainedUsageReqId.current) {
-        setAuthFileUsageRows((current) => ({ ...current, retained: [] }));
+        setAuthFileUsageRows((current) => ({
+          ...current,
+          retained: [],
+          retainedAvailable: false,
+        }));
       }
     }
-  }, [managementKey, managerServiceBase, requestMonitoringAvailable]);
+  }, [files, managementKey, managerServiceBase, requestMonitoringAvailable]);
 
   const loadAuthFileWindowUsageSummaries = useCallback(
     async (windowTargets: AuthFileUsageWindowTarget[]) => {
@@ -1177,6 +1196,7 @@ export function AuthFilesPage() {
     () =>
       buildAuthFileUsageSummaryMap(files, {
         retainedRows: authFileUsageRows.retained,
+        retainedAvailable: authFileUsageRows.retainedAvailable,
         fiveHourRows:
           authFileUsageRows.windowSignature === authFileUsageWindowTargetsSignature
             ? authFileUsageRows.fiveHour

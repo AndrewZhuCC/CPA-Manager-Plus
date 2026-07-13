@@ -217,6 +217,51 @@ func TestAnalyticsCredentialTimelineBuildsPerCredentialBuckets(t *testing.T) {
 	}
 }
 
+func TestBuildCredentialStatsKeepsSharedFileAuthIndicesSeparate(t *testing.T) {
+	rows := buildCredentialStats([]store.CredentialModelStat{
+		{
+			ID:               "shared.json",
+			AuthFileSnapshot: "shared.json",
+			AuthIndex:        "0",
+			Model:            "gpt-a",
+			BillingModel:     "gpt-a",
+			Calls:            2,
+			SuccessCalls:     2,
+			InputTokens:      100,
+			TotalTokens:      100,
+			LastSeenMS:       100,
+		},
+		{
+			ID:               "shared.json",
+			AuthFileSnapshot: "shared.json",
+			AuthIndex:        "1",
+			Model:            "gpt-a",
+			BillingModel:     "gpt-a",
+			Calls:            3,
+			SuccessCalls:     3,
+			InputTokens:      200,
+			TotalTokens:      200,
+			LastSeenMS:       200,
+		},
+	}, map[string]store.ModelPrice{
+		"gpt-a": {Prompt: 1},
+	})
+
+	if len(rows) != 2 {
+		t.Fatalf("credential stats = %#v, want two auth-index rows", rows)
+	}
+	byAuthIndex := map[string]CredentialStatRow{}
+	for _, row := range rows {
+		byAuthIndex[row.AuthIndex] = row
+	}
+	if byAuthIndex["0"].TotalTokens != 100 || byAuthIndex["0"].ID != "shared.json::0" {
+		t.Fatalf("auth index 0 row = %#v", byAuthIndex["0"])
+	}
+	if byAuthIndex["1"].TotalTokens != 200 || byAuthIndex["1"].ID != "shared.json::1" {
+		t.Fatalf("auth index 1 row = %#v", byAuthIndex["1"])
+	}
+}
+
 func TestAnalyticsSummaryComparisonReturnsPreviousPeriod(t *testing.T) {
 	db := newMonitoringTestStore(t)
 	ctx := context.Background()

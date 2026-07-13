@@ -479,7 +479,17 @@ const mergeCodexQuotaWindows = (
   if (!activeWindows || activeWindows.length === 0) return observedWindows;
 
   const observedById = new Map(observedWindows.map((window) => [window.id, window]));
-  const mergedWindows = activeWindows.map((window) => {
+  const hasObservedCoreWindows = observedWindows.some((window) =>
+    CODEX_INFO_WINDOW_IDS.has(window.id)
+  );
+  // A newer header snapshot owns the primary rate-limit shape. Keep API-only
+  // auxiliary windows, but do not retain a core window that disappeared.
+  const mergeableActiveWindows = hasObservedCoreWindows
+    ? activeWindows.filter(
+        (window) => !CODEX_INFO_WINDOW_IDS.has(window.id) || observedById.has(window.id)
+      )
+    : activeWindows;
+  const mergedWindows = mergeableActiveWindows.map((window) => {
     const observedWindow = observedById.get(window.id);
     if (!observedWindow) return window;
     observedById.delete(window.id);

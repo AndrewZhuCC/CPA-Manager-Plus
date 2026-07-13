@@ -691,9 +691,19 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
     expect(card.props['data-usage-weekly-estimate']).toBe('70000');
     expect(card.props['data-usage-weekly-cost-estimate']).toBe('7');
     expect(mocks.getAnalytics).toHaveBeenCalledTimes(3);
-    expect(
-      mocks.getAnalytics.mock.calls.map((call) => call[2]).filter((request) => request.filters)
-    ).toEqual([
+    const analyticsRequests = mocks.getAnalytics.mock.calls
+      .map((call) => call[2])
+      .filter((request) => request.filters);
+    expect(analyticsRequests).toEqual([
+      {
+        from_ms: 1,
+        to_ms: expect.any(Number),
+        now_ms: expect.any(Number),
+        filters: {
+          auth_files: ['codex-one.json', 'codex-two.json'],
+        },
+        include: { credential_stats: true },
+      },
       {
         from_ms: fiveHourResetAtMs - 18_000 * 1000,
         to_ms: quotaSampleAtMs,
@@ -715,6 +725,7 @@ describe('AuthFilesPage quota cooldown derived badge', () => {
         include: { credential_stats: true },
       },
     ]);
+    expect(analyticsRequests[0].to_ms).toBe(analyticsRequests[0].now_ms);
   });
 
   it('refreshes Codex quota instead of showing expired usage response headers', async () => {

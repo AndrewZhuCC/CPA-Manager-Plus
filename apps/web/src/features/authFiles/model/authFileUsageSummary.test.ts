@@ -168,6 +168,40 @@ describe('auth file usage summary model', () => {
     expect(summary).toBeUndefined();
   });
 
+  it('uses the actual duration when a stale window id disagrees with a weekly-only quota', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const quota = codexQuota({
+      windows: [
+        {
+          id: 'five-hour',
+          label: 'Stale 5-hour label',
+          usedPercent: 16,
+          resetLabel: 'later',
+          limitWindowSeconds: 604_800,
+          resetAtMs: WEEKLY_RESET_AT_MS,
+        },
+      ],
+    });
+
+    expect(
+      buildAuthFileUsageWindowTargets(
+        [file],
+        new Map([[key, quota]]),
+        QUOTA_SAMPLE_AT_MS
+      )
+    ).toEqual([
+      {
+        key,
+        kind: 'weekly',
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: WEEKLY_RESET_AT_MS - 604_800 * 1000,
+        toMs: QUOTA_SAMPLE_AT_MS,
+      },
+    ]);
+  });
+
   it('matches usage rows by auth file name and auth index', () => {
     const file: AuthFileItem = { name: 'shared-codex.json', type: 'codex', authIndex: '1' };
 
@@ -234,6 +268,44 @@ describe('auth file usage summary model', () => {
     expect(summary?.codexWeeklyLimitCost).toBe(7);
     expect(summary?.codexWeeklyRemainingTokens).toBe(42_000);
     expect(summary?.codexWeeklyRemainingCost).toBe(4.2);
+  });
+
+  it('does not present a recorded zero when current-window usage proves history is unavailable', () => {
+    const file: AuthFileItem = { name: 'weekly-only.json', type: 'codex', authIndex: '0' };
+    const quota = codexQuota({
+      windows: [
+        {
+          id: 'weekly',
+          label: 'Weekly limit',
+          usedPercent: 2,
+          resetLabel: 'later',
+          limitWindowSeconds: 604_800,
+          resetAtMs: WEEKLY_RESET_AT_MS,
+        },
+      ],
+    });
+
+    const summary = buildAuthFileUsageSummary(file, {
+      retainedRows: [],
+      retainedAvailable: true,
+      fiveHourRows: [],
+      weeklyRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 3_000_000,
+          cost: 16,
+        }),
+      ],
+      codexQuota: quota,
+      nowMs: QUOTA_SAMPLE_AT_MS,
+    });
+
+    expect(summary?.recordedUsageAvailable).toBe(false);
+    expect(summary?.totalTokens).toBe(0);
+    expect(summary?.estimatedCost).toBe(0);
+    expect(summary?.codexWeeklyLimitTokens).toBe(150_000_000);
+    expect(summary?.codexWeeklyLimitCost).toBe(800);
   });
 
   it('does not estimate limits when quota percentages are missing or zero', () => {

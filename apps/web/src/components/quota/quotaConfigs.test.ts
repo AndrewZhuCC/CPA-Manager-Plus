@@ -203,6 +203,71 @@ describe('resolveQuotaDisplayState', () => {
     });
   });
 
+  it('drops stale core windows when a newer snapshot reports a weekly-only quota', () => {
+    const activeQuota: CodexQuotaState = {
+      status: 'success',
+      fetchedAtMs: 1_000,
+      planType: 'plus',
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 10,
+          resetLabel: '07/01 01:00',
+          limitWindowSeconds: 18_000,
+          resetAtMs: 3_000,
+          sampledAtMs: 1_000,
+        },
+        {
+          id: 'weekly',
+          label: 'Weekly limit',
+          usedPercent: 20,
+          resetLabel: '07/07 01:00',
+          limitWindowSeconds: 604_800,
+          resetAtMs: 8_000,
+          sampledAtMs: 1_000,
+        },
+        {
+          id: 'spark-five-hour-0',
+          label: 'Spark 5-hour limit',
+          usedPercent: 30,
+          resetLabel: '07/01 01:00',
+          limitWindowSeconds: 18_000,
+        },
+      ],
+    };
+    const observedQuota: CodexQuotaState = {
+      status: 'success',
+      observedFromUsageHeaders: true,
+      observedAtMs: 2_000,
+      planType: 'plus',
+      windows: [
+        {
+          id: 'weekly',
+          label: 'Weekly limit',
+          usedPercent: 16,
+          resetLabel: '07/07 02:00',
+          limitWindowSeconds: 604_800,
+          resetAtMs: 9_000,
+          sampledAtMs: 2_000,
+        },
+      ],
+    };
+
+    const result = resolveQuotaDisplayState(activeQuota, observedQuota) as CodexQuotaState;
+
+    expect(result.windows.map((window) => window.id)).toEqual([
+      'weekly',
+      'spark-five-hour-0',
+    ]);
+    expect(result.windows[0]).toMatchObject({
+      id: 'weekly',
+      usedPercent: 16,
+      resetAtMs: 9_000,
+      sampledAtMs: 2_000,
+    });
+  });
+
   it('clears paired reset metadata when newer observed usage lacks a reset timestamp', () => {
     const activeQuota: CodexQuotaState = {
       status: 'success',

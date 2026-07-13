@@ -239,4 +239,47 @@ describe('useAuthFileUsageAnalytics', () => {
     );
     expect(rows.windowTargetsComplete).toBe(false);
   });
+
+  it('marks retained history unavailable without discarding successful window rows', async () => {
+    mocks.getAnalytics
+      .mockRejectedValueOnce(new Error('retained query timed out'))
+      .mockResolvedValueOnce(analyticsResponse('weekly-window'));
+
+    const rows = await fetchAuthFileUsageRows({
+      managerServiceBase: 'http://manager.local:18317',
+      managementKey: 'test-key',
+      includeRetained: true,
+      windowTargets: [targets[1]],
+    });
+
+    expect(rows.retained).toEqual([]);
+    expect(rows.retainedAvailable).toBe(false);
+    expect(rows.weekly).toHaveLength(1);
+    expect(rows.windowTargetsComplete).toBe(true);
+  });
+
+  it('scopes retained history to the current auth file names', async () => {
+    mocks.getAnalytics.mockResolvedValueOnce(analyticsResponse('retained'));
+
+    const rows = await fetchAuthFileUsageRows({
+      managerServiceBase: 'http://manager.local:18317',
+      managementKey: 'test-key',
+      includeRetained: true,
+      retainedAuthFileNames: ['codex-main.json', 'codex-main.json', ' second.json '],
+      windowTargets: [],
+    });
+
+    expect(mocks.getAnalytics).toHaveBeenCalledWith(
+      'http://manager.local:18317',
+      'test-key',
+      expect.objectContaining({
+        filters: {
+          auth_files: ['codex-main.json', 'second.json'],
+        },
+        include: { credential_stats: true },
+      })
+    );
+    expect(rows.retainedAvailable).toBe(true);
+    expect(rows.retained).toHaveLength(1);
+  });
 });

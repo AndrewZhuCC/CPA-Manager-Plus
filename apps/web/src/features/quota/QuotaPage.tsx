@@ -230,8 +230,13 @@ export function QuotaPage() {
   );
 
   const codexAggregateSummary = useMemo(
-    () => buildCodexQuotaAggregateSummary(codexFiles, codexUsageSummaryByKey),
-    [codexFiles, codexUsageSummaryByKey]
+    () =>
+      buildCodexQuotaAggregateSummary(
+        codexFiles,
+        codexUsageSummaryByKey,
+        codexUsageWindowTargets
+      ),
+    [codexFiles, codexUsageSummaryByKey, codexUsageWindowTargets]
   );
 
   useEffect(() => {

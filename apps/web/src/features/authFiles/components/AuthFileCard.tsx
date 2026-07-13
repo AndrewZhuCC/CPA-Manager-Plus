@@ -228,6 +228,10 @@ export function AuthFileCard(props: AuthFileCardProps) {
     info: styles.codexStatusBadgeInfo,
   } satisfies Record<AuthFileCodexStatusBadge['tone'], string>;
   const formatUsageTokens = (value: number) => formatCompactNumber(Math.round(value));
+  const formatRecordedTokens = (value: number, available: boolean) =>
+    available ? formatUsageTokens(value) : t('auth_files.usage_estimate_unavailable');
+  const formatRecordedUsd = (value: number, available: boolean) =>
+    available ? formatUsd(value) : t('auth_files.usage_estimate_unavailable');
   const formatEstimatedTokens = (value: number | null | undefined) =>
     value && value > 0
       ? `~${formatCompactNumber(Math.round(value))}`
@@ -415,7 +419,10 @@ export function AuthFileCard(props: AuthFileCardProps) {
                     {t('auth_files.usage_metric_tokens')}
                   </span>
                   <span className={styles.usageSummaryValue}>
-                    {formatUsageTokens(usageSummary.totalTokens)}
+                    {formatRecordedTokens(
+                      usageSummary.totalTokens,
+                      usageSummary.recordedUsageAvailable
+                    )}
                   </span>
                 </div>
                 <div className={styles.usageSummaryItem}>
@@ -448,7 +455,10 @@ export function AuthFileCard(props: AuthFileCardProps) {
                     {t('auth_files.usage_metric_cost')}
                   </span>
                   <span className={styles.usageSummaryValue}>
-                    {formatUsd(usageSummary.estimatedCost)}
+                    {formatRecordedUsd(
+                      usageSummary.estimatedCost,
+                      usageSummary.recordedUsageAvailable
+                    )}
                   </span>
                 </div>
                 <div className={styles.usageSummaryItem}>

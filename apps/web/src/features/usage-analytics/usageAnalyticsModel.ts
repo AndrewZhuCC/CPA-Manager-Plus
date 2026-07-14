@@ -756,7 +756,6 @@ export const buildUsageAnalyticsInclude = (
       break;
     case 'credentials':
       include.credential_stats = true;
-      include.credential_timeline = true;
       break;
     case 'heatmap':
       include.heatmap = true;
@@ -819,6 +818,15 @@ export const computeCacheHitRate = (tokens: {
   }
   return calculateCacheHitRate(tokens);
 };
+
+export const getUsageCacheTokens = (tokens: {
+  cachedTokens: unknown;
+  cacheReadTokens: unknown;
+  cacheCreationTokens: unknown;
+}): number =>
+  Math.max(toNumber(tokens.cachedTokens), 0) +
+  Math.max(toNumber(tokens.cacheReadTokens), 0) +
+  Math.max(toNumber(tokens.cacheCreationTokens), 0);
 
 const getRowCacheHitTotals = (row: UsageRankRow) => {
   const hasExplicitTotals =
@@ -1524,8 +1532,7 @@ const buildProviderModelsFromEntities = (
       existing.cacheReadTokens += model.cacheReadTokens;
       existing.cacheCreationTokens += model.cacheCreationTokens;
       existing.cacheHitTokens = existingCacheTotals.hitTokens + modelCacheTotals.hitTokens;
-      existing.cacheHitInputTokens =
-        existingCacheTotals.inputTokens + modelCacheTotals.inputTokens;
+      existing.cacheHitInputTokens = existingCacheTotals.inputTokens + modelCacheTotals.inputTokens;
       existing.cacheHitRate = calculateCacheHitRateFromTotals(
         existing.cacheHitTokens,
         existing.cacheHitInputTokens
@@ -2375,7 +2382,9 @@ export const analyzeUsageBucket = (
     totalTokens: previousPoint ? percentChange(point.totalTokens, previousPoint.totalTokens) : 0,
     inputTokens: previousPoint ? percentChange(point.inputTokens, previousPoint.inputTokens) : 0,
     outputTokens: previousPoint ? percentChange(point.outputTokens, previousPoint.outputTokens) : 0,
-    cachedTokens: previousPoint ? percentChange(point.cachedTokens, previousPoint.cachedTokens) : 0,
+    cachedTokens: previousPoint
+      ? percentChange(getUsageCacheTokens(point), getUsageCacheTokens(previousPoint))
+      : 0,
     cacheCreationTokens: previousPoint
       ? percentChange(point.cacheCreationTokens, previousPoint.cacheCreationTokens)
       : 0,

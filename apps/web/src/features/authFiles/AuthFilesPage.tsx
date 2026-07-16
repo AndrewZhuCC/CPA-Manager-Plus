@@ -90,6 +90,7 @@ import {
   authFileMatchesCodexStatusFilter,
   buildAuthFileCodexInspectionMap,
   buildWildcardSearch,
+  compareAuthFileCreatedAt,
   compareAuthFileName,
   compareAuthFileNote,
   compareAuthFilePriority,
@@ -1258,6 +1259,8 @@ export function AuthFilesPage() {
     () => [
       { value: 'default', label: t('auth_files.sort_default') },
       { value: 'name-asc', label: t('auth_files.sort_name_asc') },
+      { value: 'created-desc', label: t('auth_files.sort_created_desc') },
+      { value: 'created-asc', label: t('auth_files.sort_created_asc') },
       { value: 'note-asc', label: t('auth_files.sort_note_asc') },
       { value: 'note-desc', label: t('auth_files.sort_note_desc') },
       { value: 'priority-desc', label: t('auth_files.sort_priority_desc') },
@@ -1368,6 +1371,10 @@ export function AuthFilesPage() {
       });
     } else if (sortMode === 'name-asc') {
       copy.sort(compareAuthFileName);
+    } else if (sortMode === 'created-asc' || sortMode === 'created-desc') {
+      copy.sort((a, b) =>
+        compareAuthFileCreatedAt(a, b, sortMode === 'created-desc' ? 'desc' : 'asc')
+      );
     } else if (sortMode === 'note-asc' || sortMode === 'note-desc') {
       copy.sort((a, b) => compareAuthFileNote(a, b, sortMode === 'note-desc' ? 'desc' : 'asc'));
     } else if (sortMode === 'priority-asc' || sortMode === 'priority-desc') {

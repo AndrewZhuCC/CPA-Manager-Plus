@@ -31,7 +31,9 @@ export interface AuthFileItem {
   status?: string;
   statusMessage?: string;
   lastRefresh?: string | number;
-  modified?: number;
+  modified?: string | number;
+  file_created_at?: string | number;
+  fileCreatedAt?: string | number;
   success?: unknown;
   failed?: unknown;
   project_id?: string;

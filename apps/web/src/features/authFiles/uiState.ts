@@ -6,6 +6,8 @@ import type {
 export const AUTH_FILES_SORT_MODES = [
   'default',
   'name-asc',
+  'created-desc',
+  'created-asc',
   'note-asc',
   'note-desc',
   'priority-desc',

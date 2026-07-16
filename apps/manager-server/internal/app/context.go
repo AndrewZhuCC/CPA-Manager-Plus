@@ -90,7 +90,7 @@ func FromExisting(
 		APIKeyAliasService:             apikeyaliassvc.New(st),
 		AccountActionService:           accountactionsvc.New(st, managerConfigService),
 		AccountProcessingPolicyService: accountProcessingPolicyService,
-		ProxyService:                   proxysvc.New(managerConfigService),
+		ProxyService:                   proxysvc.New(managerConfigService, cfg.CPAAuthDir),
 		PanelService:                   panelsvc.New(cfg.PanelPath, embeddedPanel),
 		AutomationRuntimeService:       runtimeService,
 	}

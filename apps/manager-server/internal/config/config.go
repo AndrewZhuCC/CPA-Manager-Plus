@@ -23,6 +23,7 @@ type Config struct {
 	DataDir                      string
 	DBPath                       string
 	CPAUpstreamURL               string
+	CPAAuthDir                   string
 	ManagementKey                string
 	AdminKey                     string
 	DataKey                      string
@@ -55,6 +56,7 @@ type fileConfig struct {
 	DataDir                   string   `json:"dataDir,omitempty"`
 	DBPath                    string   `json:"dbPath,omitempty"`
 	CPAUpstreamURL            string   `json:"cpaUpstreamUrl,omitempty"`
+	CPAAuthDir                string   `json:"cpaAuthDir,omitempty"`
 	ManagementKeyFile         string   `json:"managementKeyFile,omitempty"`
 	AdminKeyFile              string   `json:"adminKeyFile,omitempty"`
 	DataKeyFile               string   `json:"dataKeyFile,omitempty"`
@@ -119,12 +121,14 @@ func LoadWithOptions(options LoadOptions) (Config, error) {
 	if dataKeyPath == "" {
 		dataKeyPath = filepath.Join(dataDir, "data.key")
 	}
+	cpaAuthDir := resolveConfigPath(cfgFile.CPAAuthDir, cfgDir)
 
 	return Config{
 		HTTPAddr:                     env("HTTP_ADDR", stringFallback(cfgFile.HTTPAddr, "0.0.0.0:18317")),
 		DataDir:                      dataDir,
 		DBPath:                       env("USAGE_DB_PATH", dbPathFallback),
 		CPAUpstreamURL:               env("CPA_UPSTREAM_URL", cfgFile.CPAUpstreamURL),
+		CPAAuthDir:                   env("CPA_AUTH_DIR", cpaAuthDir),
 		ManagementKey:                readSecret("CPA_MANAGEMENT_KEY", "CPA_MANAGEMENT_KEY_FILE", managementKeyFile),
 		AdminKey:                     readSecret("CPA_MANAGER_ADMIN_KEY", "CPA_MANAGER_ADMIN_KEY_FILE", adminKeyFile),
 		DataKey:                      readSecret("CPA_MANAGER_DATA_KEY", "CPA_MANAGER_DATA_KEY_FILE", dataKeyFile),

@@ -10,6 +10,7 @@ Use [OAuth Login](./oauth.md) to add new OAuth accounts. This page is for mainte
 - **`auth_index`**: the stable account index. Usage, quota, inspection, and account actions all depend on it.
 - **Enabled state**: manually disabled accounts are not restored automatically.
 - **Note, priority, and project ID**: use them to separate account purpose and routing preference.
+- **Created and modified times**: creation time supports ascending and descending sorting. Docker deployments must mount the CPA auth-file directory read-only into Manager Server and set `CPA_AUTH_DIR`; it stays empty when no reliable filesystem birth time is available.
 - **Quota and health hints**: cooldown, reauth needed, quota windows, or recently observed response headers.
 
 In multi-account setups, stable `auth_index` values are mandatory. Without them, history, quota, inspection, and actions are hard to connect to the right account.

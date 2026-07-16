@@ -22,8 +22,12 @@ services:
       USAGE_POLL_INTERVAL_MS: "500"
       USAGE_QUERY_LIMIT: "50000"
       USAGE_CORS_ORIGINS: "*"
+      # Optional: mount the CPA auth directory read-only and set CPA_AUTH_DIR
+      # to expose stable file creation times on the Auth Files page.
+      # CPA_AUTH_DIR: "/auth-files"
     volumes:
       - cpa-manager-plus-data:/data
+      # - ./auths:/auth-files:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18317/health"]
       interval: 10s

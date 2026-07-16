@@ -24,6 +24,7 @@ import {
 import { formatFileSize, formatUnixTimestamp } from '@/utils/format';
 import {
   QUOTA_PROVIDER_TYPES,
+  formatCreated,
   formatModified,
   getAuthFileStatusMessage,
   getTypeColor,
@@ -110,10 +111,15 @@ export function AuthFileCard(props: AuthFileCardProps) {
   } = props;
 
   const recentBuckets = normalizeRecentRequestBuckets(file.recent_requests ?? file.recentRequests);
-  const fileStats = {
-    success: normalizeUsageTotal(file.success),
-    failure: normalizeUsageTotal(file.failed),
-  };
+  const fileStats = usageSummary?.recordedUsageAvailable
+    ? {
+        success: normalizeUsageTotal(usageSummary.recordedSuccessCalls),
+        failure: normalizeUsageTotal(usageSummary.recordedFailureCalls),
+      }
+    : {
+        success: normalizeUsageTotal(file.success),
+        failure: normalizeUsageTotal(file.failed),
+      };
   const isRuntimeOnly = isRuntimeOnlyAuthFile(file);
   const resolvedProvider = resolveAuthProvider(file);
   const providerKey = normalizeProviderKey(String(file.type ?? file.provider ?? 'unknown'));
@@ -359,7 +365,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 {file.size ? formatFileSize(file.size) : '-'}
               </span>
             </div>
-            <div className={styles.metaItem}>
+            <div className={`${styles.metaItem} ${styles.metaTimestamp}`}>
+              <span className={styles.metaLabel}>{t('auth_files.file_created')}</span>
+              <span className={styles.metaValue}>{formatCreated(file)}</span>
+            </div>
+            <div className={`${styles.metaItem} ${styles.metaTimestamp}`}>
               <span className={styles.metaLabel}>{t('auth_files.file_modified')}</span>
               <span className={styles.metaValue}>{formatModified(file)}</span>
             </div>

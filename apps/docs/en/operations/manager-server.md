@@ -187,6 +187,7 @@ Saving CPAMP configuration does not rewrite the full CPA `config.yaml`.
 | `CPA_MANAGER_DATA_KEY_FILE` | `/run/secrets/cpa_data_key` | Optional data encryption key file. |
 | `CPA_MANAGER_DATA_KEY_PATH` | Docker: `/data/data.key`; native: `./data/data.key` | Generated data key path. |
 | `CPA_UPSTREAM_URL` | empty | Optional environment-managed CPA URL. |
+| `CPA_AUTH_DIR` | empty | Optional CPA auth-file directory. Mount it read-only to expose stable filesystem birth times; unsupported filesystems leave creation time empty. |
 | `CPA_MANAGEMENT_KEY` | empty | Optional environment-managed CPA Management Key. |
 | `CPA_MANAGEMENT_KEY_FILE` | `/run/secrets/cpa_management_key` | Optional CPA Management Key file. |
 | `USAGE_COLLECTOR_MODE` | `auto` | `auto`, `subscribe`, `http`, or `resp`. |

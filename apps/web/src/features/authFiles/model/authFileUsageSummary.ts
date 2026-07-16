@@ -9,6 +9,8 @@ const CODEX_WEEKLY_WINDOW_SECONDS = 604_800;
 export type AuthFileUsageSummary = {
   estimatedCost: number;
   totalTokens: number;
+  recordedSuccessCalls: number;
+  recordedFailureCalls: number;
   recordedUsageAvailable: boolean;
   codexFiveHourLimitTokens: number | null;
   codexFiveHourLimitCost: number | null;
@@ -81,13 +83,20 @@ const rowMatchesAuthFile = (
 const sumMatchingRows = (
   file: AuthFileItem,
   rows: MonitoringAnalyticsCredentialStatRow[]
-): { totalTokens: number; estimatedCost: number } =>
+): {
+  totalTokens: number;
+  estimatedCost: number;
+  successCalls: number;
+  failureCalls: number;
+} =>
   rows.filter((row) => rowMatchesAuthFile(file, row)).reduce(
     (total, row) => ({
       totalTokens: total.totalTokens + normalizeFiniteNumber(row.total_tokens),
       estimatedCost: total.estimatedCost + normalizeFiniteNumber(row.cost),
+      successCalls: total.successCalls + normalizeFiniteNumber(row.success_calls),
+      failureCalls: total.failureCalls + normalizeFiniteNumber(row.failure_calls),
     }),
-    { totalTokens: 0, estimatedCost: 0 }
+    { totalTokens: 0, estimatedCost: 0, successCalls: 0, failureCalls: 0 }
   );
 
 const normalizeFiniteNumber = (value: unknown): number => {
@@ -299,6 +308,8 @@ export const buildAuthFileUsageSummary = (
   if (
     retained.totalTokens <= 0 &&
     retained.estimatedCost <= 0 &&
+    retained.successCalls <= 0 &&
+    retained.failureCalls <= 0 &&
     fiveHourLimitTokens === null &&
     fiveHourLimitCost === null &&
     fiveHourRemainingTokens === null &&
@@ -314,6 +325,8 @@ export const buildAuthFileUsageSummary = (
   return {
     estimatedCost: retained.estimatedCost,
     totalTokens: retained.totalTokens,
+    recordedSuccessCalls: retained.successCalls,
+    recordedFailureCalls: retained.failureCalls,
     recordedUsageAvailable,
     codexFiveHourLimitTokens: fiveHourLimitTokens,
     codexFiveHourLimitCost: fiveHourLimitCost,

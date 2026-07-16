@@ -9,6 +9,8 @@ const summary = (
 ): AuthFileUsageSummary => ({
   estimatedCost: 0,
   totalTokens: 0,
+  recordedSuccessCalls: 0,
+  recordedFailureCalls: 0,
   recordedUsageAvailable: true,
   codexFiveHourLimitTokens: null,
   codexFiveHourLimitCost: null,

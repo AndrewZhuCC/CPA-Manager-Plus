@@ -67,6 +67,7 @@ func TestLoadReadsConfigAndResolvesRelativePaths(t *testing.T) {
   "httpAddr": "127.0.0.1:19000",
   "dataDir": "state",
   "cpaUpstreamUrl": "http://cpa.local:8317",
+  "cpaAuthDir": "auths",
   "managementKeyFile": "secret.txt",
   "collectorMode": "http",
   "queue": "custom-usage",
@@ -98,6 +99,9 @@ func TestLoadReadsConfigAndResolvesRelativePaths(t *testing.T) {
 	}
 	if cfg.CPAUpstreamURL != "http://cpa.local:8317" {
 		t.Fatalf("CPAUpstreamURL = %q", cfg.CPAUpstreamURL)
+	}
+	if want := filepath.Join(dir, "auths"); cfg.CPAAuthDir != want {
+		t.Fatalf("CPAAuthDir = %q, want %q", cfg.CPAAuthDir, want)
 	}
 	if cfg.ManagementKey != "secret-value" {
 		t.Fatalf("ManagementKey = %q", cfg.ManagementKey)
@@ -147,6 +151,7 @@ func TestLoadEnvOverridesConfig(t *testing.T) {
 	t.Setenv("HTTP_ADDR", "127.0.0.1:19001")
 	t.Setenv("USAGE_DATA_DIR", filepath.Join(dir, "env-data"))
 	t.Setenv("CPA_MANAGEMENT_KEY", "env-secret")
+	t.Setenv("CPA_AUTH_DIR", filepath.Join(dir, "env-auths"))
 	t.Setenv("USAGE_BATCH_SIZE", "12")
 	t.Setenv("CPA_MANAGER_PPROF_ADDR", "[::1]:6061")
 	t.Setenv("USAGE_DASHBOARD_HOURLY_ROLLUP_ENABLED", "false")
@@ -163,6 +168,9 @@ func TestLoadEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.ManagementKey != "env-secret" {
 		t.Fatalf("ManagementKey = %q", cfg.ManagementKey)
+	}
+	if want := filepath.Join(dir, "env-auths"); cfg.CPAAuthDir != want {
+		t.Fatalf("CPAAuthDir = %q, want %q", cfg.CPAAuthDir, want)
 	}
 	if cfg.BatchSize != 12 {
 		t.Fatalf("BatchSize = %d", cfg.BatchSize)
@@ -204,6 +212,7 @@ func clearConfigEnv(t *testing.T) {
 		"USAGE_DATA_DIR",
 		"USAGE_DB_PATH",
 		"CPA_UPSTREAM_URL",
+		"CPA_AUTH_DIR",
 		"CPA_MANAGEMENT_KEY",
 		"CPA_MANAGEMENT_KEY_FILE",
 		"USAGE_COLLECTOR_MODE",

@@ -4,6 +4,8 @@ import { normalizeAuthFilesSortMode, normalizeAuthFilesViewMode } from './uiStat
 describe('authFiles uiState', () => {
   it('normalizes persisted sort modes', () => {
     expect(normalizeAuthFilesSortMode('default')).toBe('default');
+    expect(normalizeAuthFilesSortMode('created-desc')).toBe('created-desc');
+    expect(normalizeAuthFilesSortMode('created-asc')).toBe('created-asc');
     expect(normalizeAuthFilesSortMode('priority')).toBe('priority-desc');
     expect(normalizeAuthFilesSortMode('bad')).toBeNull();
   });

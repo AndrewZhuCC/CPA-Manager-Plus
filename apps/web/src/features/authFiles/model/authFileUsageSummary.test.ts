@@ -210,12 +210,16 @@ describe('auth file usage summary model', () => {
         credentialRow({
           auth_file_snapshot: 'shared-codex.json',
           auth_index: '0',
+          success_calls: 30,
+          failure_calls: 3,
           total_tokens: 10_000,
           cost: 3,
         }),
         credentialRow({
           auth_file_snapshot: 'shared-codex.json',
           auth_index: '1',
+          success_calls: 18,
+          failure_calls: 2,
           total_tokens: 20_000,
           cost: 4.25,
         }),
@@ -227,6 +231,36 @@ describe('auth file usage summary model', () => {
 
     expect(summary?.totalTokens).toBe(20_000);
     expect(summary?.estimatedCost).toBe(4.25);
+    expect(summary?.recordedSuccessCalls).toBe(18);
+    expect(summary?.recordedFailureCalls).toBe(2);
+  });
+
+  it('keeps recorded request counts when requests have no priced token usage', () => {
+    const file: AuthFileItem = { name: 'zero-token.json', type: 'codex', authIndex: '0' };
+
+    const summary = buildAuthFileUsageSummary(file, {
+      retainedRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          calls: 4,
+          success_calls: 3,
+          failure_calls: 1,
+          total_tokens: 0,
+          cost: 0,
+        }),
+      ],
+      fiveHourRows: [],
+      weeklyRows: [],
+    });
+
+    expect(summary).toMatchObject({
+      recordedSuccessCalls: 3,
+      recordedFailureCalls: 1,
+      recordedUsageAvailable: true,
+      totalTokens: 0,
+      estimatedCost: 0,
+    });
   });
 
   it('estimates Codex 5-hour and weekly token limits from matching window usage', () => {

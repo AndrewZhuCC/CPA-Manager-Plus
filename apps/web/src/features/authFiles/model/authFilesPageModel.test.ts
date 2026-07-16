@@ -5,6 +5,7 @@ import {
   authFileMatchesCodexPlanFilter,
   authFileMatchesCodexStatusFilter,
   buildAuthFileCodexInspectionMap,
+  compareAuthFileCreatedAt,
   getAuthFileCodexInspectionKey,
   getAuthFileCodexStatus,
   getAuthFileNameFromSelectionKey,
@@ -48,6 +49,34 @@ const codexQuota = (overrides: Partial<CodexQuotaState> = {}): CodexQuotaState =
     },
   ],
   ...overrides,
+});
+
+describe('auth file creation time sorting', () => {
+  const older = codexFile({ name: 'older.json', file_created_at: '2026-07-01T00:00:00Z' });
+  const newer = codexFile({ name: 'newer.json', fileCreatedAt: 1_783_468_800_000 });
+  const unknown = codexFile({ name: 'unknown.json' });
+
+  it('sorts known creation times in both directions', () => {
+    expect([older, newer].sort((a, b) => compareAuthFileCreatedAt(a, b, 'desc'))).toEqual([
+      newer,
+      older,
+    ]);
+    expect([newer, older].sort((a, b) => compareAuthFileCreatedAt(a, b, 'asc'))).toEqual([
+      older,
+      newer,
+    ]);
+  });
+
+  it('keeps files without a reliable creation time last', () => {
+    expect([unknown, older].sort((a, b) => compareAuthFileCreatedAt(a, b, 'desc'))).toEqual([
+      older,
+      unknown,
+    ]);
+    expect([unknown, older].sort((a, b) => compareAuthFileCreatedAt(a, b, 'asc'))).toEqual([
+      older,
+      unknown,
+    ]);
+  });
 });
 
 describe('auth file Codex status helpers', () => {

@@ -18,6 +18,7 @@ import {
   getHeaderSnapshotWindowUsedPercent,
 } from '@/utils/usageHeaderSnapshots';
 import {
+  getAuthFileCreatedAtMs,
   getTypeLabel,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
@@ -136,6 +137,27 @@ const CODEX_PLAN_FILTER_SET = new Set<AuthFilesCodexPlanFilter>(AUTH_FILES_CODEX
 
 export const compareAuthFileName = (left: { name: string }, right: { name: string }) =>
   left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' });
+
+export const compareAuthFileCreatedAt = (
+  left: AuthFileItem,
+  right: AuthFileItem,
+  direction: 'asc' | 'desc'
+) => {
+  const leftCreatedAt = getAuthFileCreatedAtMs(left);
+  const rightCreatedAt = getAuthFileCreatedAtMs(right);
+  const leftKnown = Number.isFinite(leftCreatedAt);
+  const rightKnown = Number.isFinite(rightCreatedAt);
+
+  if (leftKnown || rightKnown) {
+    if (!leftKnown) return 1;
+    if (!rightKnown) return -1;
+    const diff =
+      direction === 'desc' ? rightCreatedAt - leftCreatedAt : leftCreatedAt - rightCreatedAt;
+    if (diff !== 0) return diff;
+  }
+
+  return compareAuthFileName(left, right);
+};
 
 const normalizeNumber = (value: unknown): number | null => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;

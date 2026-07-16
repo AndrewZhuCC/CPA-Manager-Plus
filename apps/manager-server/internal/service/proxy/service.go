@@ -17,6 +17,8 @@ import (
 
 type Service struct {
 	managerConfigService *managerconfig.Service
+	authFileDir          string
+	authFileCreatedAt    authFileCreationTimeResolver
 }
 
 const cpaPluginResourcePrefix = "/v0/resource/plugins"
@@ -43,8 +45,12 @@ var cpaBuiltinManagementPathHeads = map[string]struct{}{
 	"usage-statistics-enabled":  {},
 }
 
-func New(managerConfigService *managerconfig.Service) *Service {
-	return &Service{managerConfigService: managerConfigService}
+func New(managerConfigService *managerconfig.Service, authFileDir string) *Service {
+	return &Service{
+		managerConfigService: managerConfigService,
+		authFileDir:          strings.TrimSpace(authFileDir),
+		authFileCreatedAt:    readFileBirthTime,
+	}
 }
 
 func (s *Service) ProxyManagement(w http.ResponseWriter, r *http.Request, writeError func(http.ResponseWriter, int, error)) {
@@ -128,6 +134,9 @@ func (s *Service) proxyToSavedSetup(w http.ResponseWriter, r *http.Request, writ
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
 		writeError(w, http.StatusBadGateway, err)
+	}
+	if shouldEnrichAuthFilesResponse(r, s.authFileDir) {
+		proxy.ModifyResponse = s.enrichAuthFilesResponse
 	}
 	proxy.ServeHTTP(w, r)
 }

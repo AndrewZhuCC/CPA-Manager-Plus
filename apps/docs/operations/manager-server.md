@@ -185,6 +185,7 @@ Manager Server 管理：
 | `CPA_MANAGER_DATA_KEY_FILE` | `/run/secrets/cpa_data_key` | 可选数据加密 key 文件。 |
 | `CPA_MANAGER_DATA_KEY_PATH` | Docker: `/data/data.key`; native: `./data/data.key` | 自动生成的数据 key 路径。 |
 | `CPA_UPSTREAM_URL` | 空 | 可选环境变量管理的 CPA URL。 |
+| `CPA_AUTH_DIR` | 空 | 可选 CPA 认证文件目录。只读挂载后，Manager Server 会从文件系统 birth time 补充稳定的文件创建时间；文件系统不支持时保持为空。 |
 | `CPA_MANAGEMENT_KEY` | 空 | 可选环境变量管理的 CPA Management Key。 |
 | `CPA_MANAGEMENT_KEY_FILE` | `/run/secrets/cpa_management_key` | 可选 CPA Management Key 文件。 |
 | `USAGE_COLLECTOR_MODE` | `auto` | `auto`、`subscribe`、`http` 或 `resp`。 |

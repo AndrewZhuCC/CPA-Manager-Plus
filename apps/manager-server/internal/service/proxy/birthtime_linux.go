@@ -1,0 +1,21 @@
+//go:build linux
+
+package proxy
+
+import (
+	"errors"
+	"time"
+
+	"golang.org/x/sys/unix"
+)
+
+func readFileBirthTime(path string) (time.Time, error) {
+	var stat unix.Statx_t
+	if err := unix.Statx(unix.AT_FDCWD, path, unix.AT_STATX_SYNC_AS_STAT, unix.STATX_BTIME, &stat); err != nil {
+		return time.Time{}, err
+	}
+	if stat.Mask&unix.STATX_BTIME == 0 || stat.Btime.Sec <= 0 {
+		return time.Time{}, errors.New("file birth time is unavailable")
+	}
+	return time.Unix(stat.Btime.Sec, int64(stat.Btime.Nsec)), nil
+}

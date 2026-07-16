@@ -55,13 +55,46 @@ func TestUnmarshalCodexInspectionSettingsMigratesLegacyTargetType(t *testing.T) 
 
 func TestCodexInspectionSettingsRoundTripPreservesMultipleTargets(t *testing.T) {
 	settings := NormalizeCodexInspectionConfig(ManagerCodexInspectionConfig{
-		TargetTypes: []string{CodexInspectionTargetCodex, CodexInspectionTargetXAI},
+		TargetTypes:    []string{CodexInspectionTargetCodex, CodexInspectionTargetXAI},
+		CodexUserAgent: "codex-agent",
+		XAIUserAgent:   "xai-agent",
 	}, DefaultCodexInspectionConfig())
 
 	got := UnmarshalCodexInspectionSettings(MarshalCodexInspectionSettings(settings))
 
 	if !reflect.DeepEqual(got.TargetTypes, settings.TargetTypes) || got.TargetType != CodexInspectionTargetCodex {
 		t.Fatalf("round-tripped settings = %#v", got)
+	}
+	if got.CodexUserAgent != settings.CodexUserAgent || got.XAIUserAgent != settings.XAIUserAgent {
+		t.Fatalf("round-tripped user agents = %q / %q", got.CodexUserAgent, got.XAIUserAgent)
+	}
+}
+
+func TestNormalizeCodexInspectionConfigMigratesLegacyUserAgent(t *testing.T) {
+	got := NormalizeCodexInspectionConfig(ManagerCodexInspectionConfig{
+		UserAgent: " legacy-codex-agent ",
+	}, DefaultCodexInspectionConfig())
+
+	if got.CodexUserAgent != "legacy-codex-agent" || got.UserAgent != "legacy-codex-agent" {
+		t.Fatalf("Codex user agents = %q / %q", got.CodexUserAgent, got.UserAgent)
+	}
+	if got.XAIUserAgent != CodexInspectionDefaultXAIUserAgent {
+		t.Fatalf("XAIUserAgent = %q, want default", got.XAIUserAgent)
+	}
+}
+
+func TestNormalizeCodexInspectionConfigPreservesProviderUserAgents(t *testing.T) {
+	got := NormalizeCodexInspectionConfig(ManagerCodexInspectionConfig{
+		CodexUserAgent: "codex-agent",
+		XAIUserAgent:   "xai-agent",
+		UserAgent:      "stale-legacy-agent",
+	}, DefaultCodexInspectionConfig())
+
+	if got.CodexUserAgent != "codex-agent" || got.UserAgent != "codex-agent" {
+		t.Fatalf("Codex user agents = %q / %q", got.CodexUserAgent, got.UserAgent)
+	}
+	if got.XAIUserAgent != "xai-agent" {
+		t.Fatalf("XAIUserAgent = %q", got.XAIUserAgent)
 	}
 }
 

@@ -81,6 +81,8 @@ export interface CodexInspectionSettings {
   deleteWorkers: number;
   timeout: number;
   retries: number;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   userAgent: string;
   usedPercentThreshold: number;
   sampleSize: number;
@@ -93,6 +95,8 @@ export interface CodexInspectionConfigurableSettings {
   deleteWorkers: number;
   timeout: number;
   retries: number;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   userAgent: string;
   usedPercentThreshold: number;
   sampleSize: number;
@@ -334,6 +338,8 @@ export const resolveCodexInspectionSettings = (
     deleteWorkers: configurable.deleteWorkers,
     timeout: configurable.timeout,
     retries: configurable.retries,
+    codexUserAgent: configurable.codexUserAgent,
+    xaiUserAgent: configurable.xaiUserAgent,
     userAgent: configurable.userAgent,
     usedPercentThreshold: configurable.usedPercentThreshold,
     sampleSize: configurable.sampleSize,

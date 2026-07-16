@@ -428,6 +428,12 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
       ),
       timeout: normalizeNumber(clean.timeout),
       retries: normalizeNumber(clean.retries),
+      codexUserAgent: normalizeString(
+        clean['codex_user_agent'] ?? clean.codexUserAgent ?? clean['codex-user-agent']
+      ),
+      xaiUserAgent: normalizeString(
+        clean['xai_user_agent'] ?? clean.xaiUserAgent ?? clean['xai-user-agent']
+      ),
       userAgent: normalizeString(clean['user_agent'] ?? clean.userAgent ?? clean['user-agent']),
       usedPercentThreshold: threshold,
       sampleSize: normalizeNumber(clean['sample_size'] ?? clean.sampleSize ?? clean['sample-size']),

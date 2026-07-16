@@ -731,7 +731,9 @@ export function CodexInspectionPage() {
         key: 'disable',
         label: t('monitoring.codex_inspection_disable_count'),
         value: disableCount === null ? blank : String(disableCount),
-        meta: `${t('monitoring.codex_inspection_threshold')}: ${inspectionSettings.usedPercentThreshold}%`,
+        meta: inspectionSettings.targetTypes.includes('codex')
+          ? `${t('monitoring.codex_inspection_threshold')}: ${inspectionSettings.usedPercentThreshold}%`
+          : t('monitoring.codex_inspection_target_xai'),
         tone: disableCount && disableCount > 0 ? 'warn' : undefined,
         icon: 'disable',
         accent: 'amber',
@@ -759,6 +761,7 @@ export function CodexInspectionPage() {
       },
     ];
   }, [
+    inspectionSettings.targetTypes,
     inspectionSettings.usedPercentThreshold,
     progress.completed,
     progress.percent,

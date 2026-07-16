@@ -15,6 +15,8 @@ const (
 	CodexInspectionScheduleModeTimePoints = "time_points"
 	CodexInspectionTargetCodex            = "codex"
 	CodexInspectionTargetXAI              = "xai"
+	CodexInspectionDefaultCodexUserAgent  = "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal"
+	CodexInspectionDefaultXAIUserAgent    = "grok-pager/0.2.101 grok-shell/0.2.101 (macos; aarch64)"
 
 	CodexInspectionAutoActionNone    = "none"
 	CodexInspectionAutoActionEnable  = "enable"
@@ -45,6 +47,8 @@ type ManagerCodexInspectionConfig struct {
 	DeleteWorkers        int                                  `json:"deleteWorkers,omitempty"`
 	Timeout              int                                  `json:"timeout,omitempty"`
 	Retries              int                                  `json:"retries,omitempty"`
+	CodexUserAgent       string                               `json:"codexUserAgent,omitempty"`
+	XAIUserAgent         string                               `json:"xaiUserAgent,omitempty"`
 	UserAgent            string                               `json:"userAgent,omitempty"`
 	UsedPercentThreshold float64                              `json:"usedPercentThreshold,omitempty"`
 	SampleSize           int                                  `json:"sampleSize,omitempty"`
@@ -154,7 +158,9 @@ func DefaultCodexInspectionConfig() ManagerCodexInspectionConfig {
 		DeleteWorkers:        4,
 		Timeout:              15000,
 		Retries:              0,
-		UserAgent:            "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal",
+		CodexUserAgent:       CodexInspectionDefaultCodexUserAgent,
+		XAIUserAgent:         CodexInspectionDefaultXAIUserAgent,
+		UserAgent:            CodexInspectionDefaultCodexUserAgent,
 		UsedPercentThreshold: 100,
 		SampleSize:           0,
 		AutoActionMode:       CodexInspectionAutoActionNone,
@@ -183,7 +189,15 @@ func NormalizeCodexInspectionConfig(input ManagerCodexInspectionConfig, fallback
 	if input.Retries >= 0 {
 		next.Retries = input.Retries
 	}
-	next.UserAgent = valueOr(input.UserAgent, base.UserAgent)
+	baseCodexUserAgent := valueOr(base.CodexUserAgent, base.UserAgent)
+	if baseCodexUserAgent == "" {
+		baseCodexUserAgent = CodexInspectionDefaultCodexUserAgent
+	}
+	baseXAIUserAgent := valueOr(base.XAIUserAgent, CodexInspectionDefaultXAIUserAgent)
+	inputCodexUserAgent := valueOr(input.CodexUserAgent, input.UserAgent)
+	next.CodexUserAgent = valueOr(inputCodexUserAgent, baseCodexUserAgent)
+	next.XAIUserAgent = valueOr(input.XAIUserAgent, baseXAIUserAgent)
+	next.UserAgent = next.CodexUserAgent
 	next.UsedPercentThreshold = normalizePercent(input.UsedPercentThreshold, base.UsedPercentThreshold)
 	if input.SampleSize >= 0 {
 		next.SampleSize = input.SampleSize

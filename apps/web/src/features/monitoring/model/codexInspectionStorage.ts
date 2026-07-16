@@ -15,6 +15,7 @@ import {
   isRecord,
   normalizeConfigurableSettings,
   normalizeInspectionTargetTypes,
+  normalizeInspectionUserAgents,
   normalizeInspectionAction,
   normalizeLogLevel,
   normalizeStoredActionFilter,
@@ -41,6 +42,7 @@ const sanitizeInspectionSettingsForStorage = (
   settings: CodexInspectionSettings
 ): CodexInspectionSettings => {
   const targetTypes = normalizeInspectionTargetTypes(settings.targetTypes, settings.targetType);
+  const userAgents = normalizeInspectionUserAgents(settings);
   return {
     baseUrl: '',
     token: '',
@@ -53,7 +55,7 @@ const sanitizeInspectionSettingsForStorage = (
     ),
     timeout: clampPositiveInteger(settings.timeout, DEFAULT_CODEX_INSPECTION_SETTINGS.timeout),
     retries: Math.max(0, Math.floor(normalizeNumberValue(settings.retries) ?? 0)),
-    userAgent: readString(settings.userAgent) || DEFAULT_CODEX_INSPECTION_SETTINGS.userAgent,
+    ...userAgents,
     usedPercentThreshold:
       normalizeNumberValue(settings.usedPercentThreshold) ??
       DEFAULT_CODEX_INSPECTION_SETTINGS.usedPercentThreshold,
@@ -70,6 +72,8 @@ const normalizeStoredSettings = (value: unknown): CodexInspectionSettings => {
     deleteWorkers: input.deleteWorkers,
     timeout: input.timeout,
     retries: input.retries,
+    codexUserAgent: input.codexUserAgent,
+    xaiUserAgent: input.xaiUserAgent,
     userAgent: input.userAgent,
     usedPercentThreshold: input.usedPercentThreshold,
     sampleSize: input.sampleSize,
@@ -84,6 +88,8 @@ const normalizeStoredSettings = (value: unknown): CodexInspectionSettings => {
     deleteWorkers: configurable.deleteWorkers,
     timeout: configurable.timeout,
     retries: configurable.retries,
+    codexUserAgent: configurable.codexUserAgent,
+    xaiUserAgent: configurable.xaiUserAgent,
     userAgent: configurable.userAgent,
     usedPercentThreshold: configurable.usedPercentThreshold,
     sampleSize: configurable.sampleSize,

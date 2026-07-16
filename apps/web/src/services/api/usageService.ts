@@ -182,6 +182,8 @@ export interface ManagerCodexInspectionConfig {
   deleteWorkers?: number;
   timeout?: number;
   retries?: number;
+  codexUserAgent?: string;
+  xaiUserAgent?: string;
   userAgent?: string;
   usedPercentThreshold?: number;
   sampleSize?: number;

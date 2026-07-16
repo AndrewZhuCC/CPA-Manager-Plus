@@ -69,6 +69,10 @@ describe('inspectSingleAccount', () => {
 
     const result = await inspectSingleAccount(baseAccount, settings);
 
+    expect(mockRequestCodexUsageRaw).toHaveBeenCalledWith(
+      expect.objectContaining({ userAgent: settings.codexUserAgent })
+    );
+
     expect(result.action).toBe('keep');
     expect(result.actionReason).toBe('月额度仍可用，无需处理');
     expect(result.usedPercent).toBe(5);

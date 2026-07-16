@@ -76,9 +76,12 @@ describe('inspectSingleXaiAccount', () => {
 
     const result = await inspectSingleXaiAccount(baseAccount, settings);
 
-    expect(mockProbeXaiBilling).toHaveBeenCalledWith(rawAccount, expect.any(Function), {
-      timeout: settings.timeout,
-    });
+    expect(mockProbeXaiBilling).toHaveBeenCalledWith(
+      rawAccount,
+      expect.any(Function),
+      { timeout: settings.timeout },
+      { userAgent: settings.xaiUserAgent }
+    );
 
     expect(result).toMatchObject({
       action: 'keep',

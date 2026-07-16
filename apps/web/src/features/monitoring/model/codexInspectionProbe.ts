@@ -344,7 +344,7 @@ export const inspectSingleAccount = async (
       requestCodexUsageRaw({
         authIndex,
         accountId: account.accountId,
-        userAgent: settings.userAgent,
+        userAgent: settings.codexUserAgent,
         requestConfig,
       })
     );

@@ -74,7 +74,8 @@ export type InspectionSettingsDraft = {
   deleteWorkers: string;
   timeout: string;
   retries: string;
-  userAgent: string;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   usedPercentThreshold: string;
   sampleSize: string;
   autoActionMode: CodexInspectionAutoActionMode;
@@ -116,7 +117,8 @@ export const toSettingsDraft = (
   deleteWorkers: String(settings.deleteWorkers),
   timeout: String(settings.timeout),
   retries: String(settings.retries),
-  userAgent: settings.userAgent,
+  codexUserAgent: settings.codexUserAgent,
+  xaiUserAgent: settings.xaiUserAgent,
   usedPercentThreshold: String(settings.usedPercentThreshold),
   sampleSize: String(settings.sampleSize),
   autoActionMode: settings.autoActionMode,
@@ -459,7 +461,8 @@ export type SharedInspectionConfigField =
   | 'deleteWorkers'
   | 'timeout'
   | 'retries'
-  | 'userAgent';
+  | 'codexUserAgent'
+  | 'xaiUserAgent';
 
 export type SharedInspectionConfigDraft = {
   [K in SharedInspectionConfigField]: string;
@@ -480,6 +483,8 @@ export type ValidatedInspectionConfigValues = {
   deleteWorkers: number;
   timeout: number;
   retries: number;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   userAgent: string;
   usedPercentThreshold: number;
   sampleSize: number;
@@ -534,7 +539,10 @@ export const validateInspectionConfigFields = (
   checkInteger('sampleSize', 0, 'monitoring.codex_inspection_settings_sample_size_label');
 
   const threshold = Number(draft.usedPercentThreshold.trim());
-  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+  if (
+    draft.targetTypes.includes('codex') &&
+    (!Number.isFinite(threshold) || threshold < 0 || threshold > 100)
+  ) {
     errors.usedPercentThreshold = t('monitoring.codex_inspection_settings_invalid_threshold', {
       field: t('monitoring.codex_inspection_settings_used_percent_threshold_label'),
     });
@@ -555,6 +563,10 @@ export const validateInspectionConfigDraft = (
     return { ok: false, errors, values: null };
   }
 
+  const threshold = Number(draft.usedPercentThreshold.trim());
+  const normalizedThreshold =
+    Number.isFinite(threshold) && threshold >= 0 && threshold <= 100 ? threshold : 100;
+
   return {
     ok: true,
     errors,
@@ -565,8 +577,10 @@ export const validateInspectionConfigDraft = (
       deleteWorkers: Number(draft.deleteWorkers.trim()),
       timeout: Number(draft.timeout.trim()),
       retries: Number(draft.retries.trim()),
-      userAgent: draft.userAgent.trim(),
-      usedPercentThreshold: Number(draft.usedPercentThreshold.trim()),
+      codexUserAgent: draft.codexUserAgent.trim(),
+      xaiUserAgent: draft.xaiUserAgent.trim(),
+      userAgent: draft.codexUserAgent.trim(),
+      usedPercentThreshold: normalizedThreshold,
       sampleSize: Number(draft.sampleSize.trim()),
       autoActionMode: normalizeInspectionAutoActionMode(draft.autoActionMode),
       autoRecoverEnabled: draft.autoRecoverEnabled === true,
@@ -637,6 +651,12 @@ export const buildConfigOverviewItems = (
         : t('monitoring.codex_inspection_target_codex')
     )
     .join(' + ');
+  const thresholdItem: ConfigOverviewItem = {
+    key: 'threshold',
+    label: t('monitoring.server_codex_inspection_config_summary_threshold'),
+    value: `${settings.usedPercentThreshold}%`,
+    field: 'usedPercentThreshold',
+  };
 
   if (options.mode === 'server') {
     return [
@@ -661,12 +681,7 @@ export const buildConfigOverviewItems = (
         value: targetTypesLabel,
         field: 'targetTypes',
       },
-      {
-        key: 'threshold',
-        label: t('monitoring.server_codex_inspection_config_summary_threshold'),
-        value: `${settings.usedPercentThreshold}%`,
-        field: 'usedPercentThreshold',
-      },
+      ...(settings.targetTypes.includes('codex') ? [thresholdItem] : []),
       {
         key: 'sample',
         label: t('monitoring.server_codex_inspection_config_summary_sample'),
@@ -691,12 +706,14 @@ export const buildConfigOverviewItems = (
   }
 
   return [
-    {
-      key: 'threshold',
-      label: t('monitoring.codex_inspection_threshold'),
-      value: `${settings.usedPercentThreshold}%`,
-      field: 'usedPercentThreshold',
-    },
+    ...(settings.targetTypes.includes('codex')
+      ? [
+          {
+            ...thresholdItem,
+            label: t('monitoring.codex_inspection_threshold'),
+          },
+        ]
+      : []),
     {
       key: 'sample',
       label: t('monitoring.codex_inspection_sample_size'),

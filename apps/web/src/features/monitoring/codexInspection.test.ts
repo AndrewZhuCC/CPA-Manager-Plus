@@ -4,6 +4,7 @@ import { authFilesApi } from '@/services/api/authFiles';
 import {
   CODEX_INSPECTION_LAST_RUN_STORAGE_KEY,
   CODEX_INSPECTION_SETTINGS_STORAGE_KEY,
+  DEFAULT_CODEX_INSPECTION_SETTINGS,
   createCodexInspectionConnectionFingerprint,
   executeCodexInspectionActions,
   filterInspectionAccountsByTargetTypes,
@@ -101,6 +102,8 @@ const createRunResult = (): CodexInspectionRunResult => {
       deleteWorkers: 1,
       timeout: 1000,
       retries: 0,
+      codexUserAgent: 'test-agent',
+      xaiUserAgent: 'xai-test-agent',
       userAgent: 'test-agent',
       usedPercentThreshold: 90,
       sampleSize: 0,
@@ -170,6 +173,35 @@ describe('Codex inspection settings', () => {
     });
   });
 
+  it('migrates the legacy User-Agent to Codex and preserves provider-specific values', () => {
+    const storage = createStorage();
+    vi.stubGlobal('localStorage', storage);
+    storage.setItem(
+      CODEX_INSPECTION_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ userAgent: 'legacy-codex-agent' })
+    );
+
+    expect(loadCodexInspectionConfigurableSettings(null)).toMatchObject({
+      codexUserAgent: 'legacy-codex-agent',
+      xaiUserAgent: DEFAULT_CODEX_INSPECTION_SETTINGS.xaiUserAgent,
+      userAgent: 'legacy-codex-agent',
+    });
+
+    storage.setItem(
+      CODEX_INSPECTION_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        codexUserAgent: 'codex-agent',
+        xaiUserAgent: 'xai-agent',
+        userAgent: 'stale-agent',
+      })
+    );
+    expect(loadCodexInspectionConfigurableSettings(null)).toMatchObject({
+      codexUserAgent: 'codex-agent',
+      xaiUserAgent: 'xai-agent',
+      userAgent: 'codex-agent',
+    });
+  });
+
   it('filters local inspection accounts by every selected provider', () => {
     const accounts = [
       { provider: 'codex', id: 'codex-account' },
@@ -196,12 +228,13 @@ describe('Codex inspection settings', () => {
 
     const invalid = validateInspectionConfigDraft(
       {
-        targetTypes: [],
+        targetTypes: ['codex'],
         workers: '0',
         deleteWorkers: '2',
         timeout: '15000',
         retries: '-1',
-        userAgent: 'agent',
+        codexUserAgent: 'agent',
+        xaiUserAgent: 'xai-agent',
         usedPercentThreshold: '120',
         sampleSize: 'all',
         autoActionMode: 'delete',
@@ -211,13 +244,32 @@ describe('Codex inspection settings', () => {
     );
 
     expect(invalid.ok).toBe(false);
-    expect(invalid.errors.targetTypes).toBe(
-      'monitoring.codex_inspection_settings_target_type_required'
-    );
     expect(invalid.errors.workers).toContain('>= 1');
     expect(invalid.errors.retries).toContain('>= 0');
     expect(invalid.errors.usedPercentThreshold).toContain('0-100');
     expect(invalid.errors.sampleSize).toContain('>= 0');
+
+    const missingTarget = validateInspectionConfigDraft(
+      {
+        targetTypes: [],
+        workers: '3',
+        deleteWorkers: '2',
+        timeout: '15000',
+        retries: '0',
+        codexUserAgent: 'codex-agent',
+        xaiUserAgent: 'xai-agent',
+        usedPercentThreshold: '100',
+        sampleSize: '0',
+        autoActionMode: 'none',
+        autoRecoverEnabled: false,
+      },
+      t
+    );
+
+    expect(missingTarget.ok).toBe(false);
+    expect(missingTarget.errors.targetTypes).toBe(
+      'monitoring.codex_inspection_settings_target_type_required'
+    );
 
     const valid = validateInspectionConfigDraft(
       {
@@ -226,7 +278,8 @@ describe('Codex inspection settings', () => {
         deleteWorkers: '2',
         timeout: '15000',
         retries: '0',
-        userAgent: ' agent ',
+        codexUserAgent: ' codex-agent ',
+        xaiUserAgent: ' xai-agent ',
         usedPercentThreshold: '99.5',
         sampleSize: '0',
         autoActionMode: 'unexpected',
@@ -243,12 +296,36 @@ describe('Codex inspection settings', () => {
       deleteWorkers: 2,
       timeout: 15000,
       retries: 0,
-      userAgent: 'agent',
+      codexUserAgent: 'codex-agent',
+      xaiUserAgent: 'xai-agent',
+      userAgent: 'codex-agent',
       usedPercentThreshold: 99.5,
       sampleSize: 0,
       autoActionMode: 'none',
       autoRecoverEnabled: true,
     });
+
+    const xaiOnly = validateInspectionConfigDraft(
+      {
+        targetTypes: ['xai'],
+        workers: '3',
+        deleteWorkers: '2',
+        timeout: '15000',
+        retries: '0',
+        codexUserAgent: 'codex-agent',
+        xaiUserAgent: 'xai-agent',
+        usedPercentThreshold: 'not-applicable',
+        sampleSize: '0',
+        autoActionMode: 'none',
+        autoRecoverEnabled: false,
+      },
+      t
+    );
+
+    expect(xaiOnly.ok).toBe(true);
+    expect(xaiOnly.values?.usedPercentThreshold).toBe(
+      DEFAULT_CODEX_INSPECTION_SETTINGS.usedPercentThreshold
+    );
   });
 
   it('builds local and server config overview items from the shared model', () => {
@@ -310,6 +387,19 @@ describe('Codex inspection settings', () => {
       { key: 'auto', value: 'Auto delete', tone: 'bad', field: 'autoActionMode' },
       { key: 'recover', value: 'Disabled', tone: 'idle', field: 'autoActionMode' },
     ]);
+
+    const xaiOnlySettings = { ...settings, targetTypes: ['xai'] as Array<'codex' | 'xai'> };
+    expect(buildConfigOverviewItems(xaiOnlySettings, { mode: 'local', t })).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'threshold' })])
+    );
+    expect(
+      buildConfigOverviewItems(xaiOnlySettings, {
+        mode: 'server',
+        t,
+        scheduleEnabled: true,
+        scheduleLabel: 'Every 60 minutes',
+      })
+    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ key: 'threshold' })]));
   });
 });
 

@@ -19,7 +19,7 @@ const (
 	xaiBillingWeeklyURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 	xaiBillingMonthlyURL = "https://cli-chat-proxy.grok.com/v1/billing"
 	xaiGrokVersion       = "0.2.101"
-	xaiGrokUserAgent     = "grok-pager/0.2.101 grok-shell/0.2.101 (macos; aarch64)"
+	xaiGrokUserAgent     = model.CodexInspectionDefaultXAIUserAgent
 )
 
 type xaiProbeDecision struct {
@@ -142,7 +142,7 @@ func (s *Service) requestXAIBilling(
 		"Authorization":         "Bearer $TOKEN$",
 		"x-xai-token-auth":      "xai-grok-cli",
 		"x-grok-client-version": xaiGrokVersion,
-		"User-Agent":            xaiGrokUserAgent,
+		"User-Agent":            settings.XAIUserAgent,
 		"Accept":                "*/*",
 	}
 	if userID := resolveXAIUserID(item.File); userID != "" {

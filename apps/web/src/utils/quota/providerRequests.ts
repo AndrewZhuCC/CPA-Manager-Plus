@@ -758,8 +758,12 @@ const resolveXaiUserId = (file: AuthFileItem): string | null => {
   return null;
 };
 
-const buildXaiRequestHeaders = (file: AuthFileItem): Record<string, string> => {
+const buildXaiRequestHeaders = (file: AuthFileItem, userAgent?: string): Record<string, string> => {
   const headers: Record<string, string> = { ...XAI_REQUEST_HEADERS };
+  const normalizedUserAgent = String(userAgent ?? '').trim();
+  if (normalizedUserAgent) {
+    headers['user-agent'] = normalizedUserAgent;
+  }
   const userId = resolveXaiUserId(file);
   if (userId) {
     headers['x-userid'] = userId;
@@ -794,19 +798,19 @@ const requestXaiBilling = async (
     throw new XaiProbeError(getApiCallErrorMessage(result), envelope, decision);
   }
 
-	const payload = parseXaiBillingPayload(result.body ?? result.bodyText);
-	const summary = buildXaiBillingSummary(payload?.config);
-	if (!summary) {
-		const envelope = parseXaiErrorEnvelope({
-			statusCode: result.hasStatusCode ? result.statusCode : null,
-			body: result.body,
-			bodyText: result.bodyText,
-			headers: result.header,
-		});
-		const decision = classifyXaiProbe({ surface: 'billing', envelope, hasPayload: false });
-		throw new XaiProbeError('xAI billing response schema changed', envelope, decision);
-	}
-	return summary;
+  const payload = parseXaiBillingPayload(result.body ?? result.bodyText);
+  const summary = buildXaiBillingSummary(payload?.config);
+  if (!summary) {
+    const envelope = parseXaiErrorEnvelope({
+      statusCode: result.hasStatusCode ? result.statusCode : null,
+      body: result.body,
+      bodyText: result.bodyText,
+      headers: result.header,
+    });
+    const decision = classifyXaiProbe({ surface: 'billing', envelope, hasPayload: false });
+    throw new XaiProbeError('xAI billing response schema changed', envelope, decision);
+  }
+  return summary;
 };
 
 export interface XaiBillingProbeResult {
@@ -852,7 +856,8 @@ const selectXaiBillingFailure = (failures: unknown[]) =>
 export const probeXaiBilling = async (
   file: AuthFileItem,
   t: TFunction,
-  requestConfig?: AxiosRequestConfig
+  requestConfig?: AxiosRequestConfig,
+  options?: { userAgent?: string }
 ): Promise<XaiBillingProbeResult> => {
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndex = normalizeAuthIndex(rawAuthIndex);
@@ -860,7 +865,7 @@ export const probeXaiBilling = async (
     throw new Error(t('xai_quota.missing_auth_index'));
   }
 
-  const requestHeader = buildXaiRequestHeaders(file);
+  const requestHeader = buildXaiRequestHeaders(file, options?.userAgent);
   const [weeklyResult, monthlyResult] = await Promise.allSettled([
     requestXaiBilling(authIndex, XAI_BILLING_WEEKLY_URL, requestHeader, requestConfig),
     requestXaiBilling(authIndex, XAI_BILLING_MONTHLY_URL, requestHeader, requestConfig),

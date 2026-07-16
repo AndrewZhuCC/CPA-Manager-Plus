@@ -29,7 +29,12 @@ import {
   type CodexInspectionRunResult,
   type CodexInspectionTargetType,
 } from '@/features/monitoring/codexInspection';
-import { normalizeInspectionTargetTypes } from '@/features/monitoring/model/codexInspectionSettings';
+import {
+  DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT,
+  DEFAULT_CODEX_INSPECTION_XAI_USER_AGENT,
+  normalizeInspectionTargetTypes,
+  normalizeInspectionUserAgents,
+} from '@/features/monitoring/model/codexInspectionSettings';
 import {
   CODEX_INSPECTION_RESULT_PAGE_SIZE_OPTIONS,
   buildCodexInspectionPaginationState,
@@ -89,7 +94,8 @@ type ServerCodexInspectionDraft = {
   deleteWorkers: string;
   timeout: string;
   retries: string;
-  userAgent: string;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   usedPercentThreshold: string;
   sampleSize: string;
   autoActionMode: string;
@@ -110,6 +116,8 @@ type NormalizedServerCodexInspectionConfig = {
   deleteWorkers: number;
   timeout: number;
   retries: number;
+  codexUserAgent: string;
+  xaiUserAgent: string;
   userAgent: string;
   usedPercentThreshold: number;
   sampleSize: number;
@@ -131,7 +139,9 @@ const DEFAULT_SERVER_CODEX_CONFIG: NormalizedServerCodexInspectionConfig = {
   deleteWorkers: 4,
   timeout: 15000,
   retries: 0,
-  userAgent: 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+  codexUserAgent: DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT,
+  xaiUserAgent: DEFAULT_CODEX_INSPECTION_XAI_USER_AGENT,
+  userAgent: DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT,
   usedPercentThreshold: 100,
   sampleSize: 0,
   autoActionMode: 'none',
@@ -179,6 +189,7 @@ const resolveServerCodexConfig = (
     config?.targetType,
     DEFAULT_SERVER_CODEX_CONFIG.targetTypes
   );
+  const userAgents = normalizeInspectionUserAgents(config, DEFAULT_SERVER_CODEX_CONFIG);
 
   return {
     ...DEFAULT_SERVER_CODEX_CONFIG,
@@ -210,7 +221,7 @@ const resolveServerCodexConfig = (
       config?.retries !== undefined && config.retries >= 0
         ? config.retries
         : DEFAULT_SERVER_CODEX_CONFIG.retries,
-    userAgent: config?.userAgent || DEFAULT_SERVER_CODEX_CONFIG.userAgent,
+    ...userAgents,
     usedPercentThreshold:
       config?.usedPercentThreshold !== undefined
         ? config.usedPercentThreshold
@@ -238,7 +249,8 @@ const toDraft = (config?: ManagerCodexInspectionConfig | null): ServerCodexInspe
     deleteWorkers: String(resolved.deleteWorkers),
     timeout: String(resolved.timeout),
     retries: String(resolved.retries),
-    userAgent: resolved.userAgent,
+    codexUserAgent: resolved.codexUserAgent,
+    xaiUserAgent: resolved.xaiUserAgent,
     usedPercentThreshold: String(resolved.usedPercentThreshold),
     sampleSize: String(resolved.sampleSize),
     autoActionMode: resolved.autoActionMode,
@@ -329,6 +341,8 @@ const createConfigFromDraft = (
     deleteWorkers: validation.values.deleteWorkers,
     timeout: validation.values.timeout,
     retries: validation.values.retries,
+    codexUserAgent: validation.values.codexUserAgent,
+    xaiUserAgent: validation.values.xaiUserAgent,
     userAgent: validation.values.userAgent,
     usedPercentThreshold: validation.values.usedPercentThreshold,
     sampleSize: validation.values.sampleSize,
@@ -466,6 +480,8 @@ function getComparableConfig(config: NormalizedServerCodexInspectionConfig) {
     deleteWorkers: config.deleteWorkers,
     timeout: config.timeout,
     retries: config.retries,
+    codexUserAgent: config.codexUserAgent.trim(),
+    xaiUserAgent: config.xaiUserAgent.trim(),
     userAgent: config.userAgent.trim(),
     usedPercentThreshold: config.usedPercentThreshold,
     sampleSize: config.sampleSize,
@@ -1385,7 +1401,9 @@ export function ServerCodexInspectionPage() {
               key: 'disable',
               label: t('monitoring.codex_inspection_disable_count'),
               value: activeRun ? String(activeRun.disableCount) : summaryBlankValue,
-              meta: `${t('monitoring.codex_inspection_threshold')}: ${selectedConfig.usedPercentThreshold}%`,
+              meta: selectedConfig.targetTypes.includes('codex')
+                ? `${t('monitoring.codex_inspection_threshold')}: ${selectedConfig.usedPercentThreshold}%`
+                : t('monitoring.codex_inspection_target_xai'),
               tone: 'warn',
               Icon: IconShield,
               accent: 'amber' as const,
@@ -1700,6 +1718,8 @@ export function ServerCodexInspectionPage() {
             deleteWorkers: selectedConfig.deleteWorkers,
             timeout: selectedConfig.timeout,
             retries: selectedConfig.retries,
+            codexUserAgent: selectedConfig.codexUserAgent,
+            xaiUserAgent: selectedConfig.xaiUserAgent,
             userAgent: selectedConfig.userAgent,
             usedPercentThreshold: selectedConfig.usedPercentThreshold,
             sampleSize: selectedConfig.sampleSize,

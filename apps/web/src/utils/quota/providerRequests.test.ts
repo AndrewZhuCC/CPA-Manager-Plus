@@ -330,6 +330,33 @@ describe('mergeXaiBillingSummaries', () => {
 });
 
 describe('fetchXaiQuota', () => {
+  it('allows inspection callers to override the xAI User-Agent', async () => {
+    mocks.request.mockResolvedValue({
+      statusCode: 200,
+      hasStatusCode: true,
+      header: {},
+      bodyText: '',
+      body: {
+        config: {
+          credit_usage_percent: 25,
+          current_period: { type: 'weekly' },
+        },
+      },
+    });
+
+    await probeXaiBilling({ name: 'xai.json', type: 'xai', authIndex: 'xai-1' }, t, undefined, {
+      userAgent: 'xai-test-agent',
+    });
+
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+    expect(mocks.request.mock.calls[0][0]).toMatchObject({
+      header: expect.objectContaining({ 'user-agent': 'xai-test-agent' }),
+    });
+    expect(mocks.request.mock.calls[1][0]).toMatchObject({
+      header: expect.objectContaining({ 'user-agent': 'xai-test-agent' }),
+    });
+  });
+
   it('requests weekly and monthly billing and merges their summaries', async () => {
     mocks.request
       .mockResolvedValueOnce({
@@ -444,9 +471,7 @@ describe('fetchXaiQuota', () => {
       usedCents: 5000,
       usedPercent: 25,
       partial: true,
-      diagnostics: [
-        expect.objectContaining({ classification: 'upstream_error', statusCode: 500 }),
-      ],
+      diagnostics: [expect.objectContaining({ classification: 'upstream_error', statusCode: 500 })],
     });
   });
 

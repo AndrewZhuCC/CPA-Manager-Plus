@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -181,19 +182,22 @@ func TestRunXAIUsesBillingEndpointsInsteadOfCodexUsage(t *testing.T) {
 func TestRunSupportsCodexAndXAIInTheSameInspection(t *testing.T) {
 	var mu sync.Mutex
 	requestedURLs := make([]string, 0, 3)
+	requestedUserAgents := make(map[string][]string)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v0/management/auth-files" && r.Method == http.MethodGet:
 			_, _ = w.Write([]byte(`{"files":[{"name":"codex-auth.json","auth_index":"codex-1","provider":"codex","account":"codex@example.com"},{"name":"xai-auth.json","auth_index":"xai-1","provider":"xai","account":"xai@example.com","user":{"id":"user-1"}}]}`))
 		case r.URL.Path == "/v0/management/api-call" && r.Method == http.MethodPost:
 			var payload struct {
-				URL string `json:"url"`
+				URL    string            `json:"url"`
+				Header map[string]string `json:"header"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatalf("decode api-call payload: %v", err)
 			}
 			mu.Lock()
 			requestedURLs = append(requestedURLs, payload.URL)
+			requestedUserAgents[payload.URL] = append(requestedUserAgents[payload.URL], payload.Header["User-Agent"])
 			mu.Unlock()
 			switch {
 			case strings.Contains(payload.URL, "format=credits"):
@@ -213,6 +217,9 @@ func TestRunSupportsCodexAndXAIInTheSameInspection(t *testing.T) {
 	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
 	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetCodex, model.CodexInspectionTargetXAI}
 	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetCodex
+	managerCfg.CodexInspection.CodexUserAgent = "codex-test-agent"
+	managerCfg.CodexInspection.XAIUserAgent = "xai-test-agent"
+	managerCfg.CodexInspection.UserAgent = "codex-test-agent"
 	managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 		t.Fatalf("save manager config: %v", err)
@@ -234,9 +241,18 @@ func TestRunSupportsCodexAndXAIInTheSameInspection(t *testing.T) {
 	}
 	mu.Lock()
 	requestCount := len(requestedURLs)
+	codexUserAgents := append([]string(nil), requestedUserAgents[codexUsageURL]...)
+	xaiWeeklyUserAgents := append([]string(nil), requestedUserAgents[xaiBillingWeeklyURL]...)
+	xaiMonthlyUserAgents := append([]string(nil), requestedUserAgents[xaiBillingMonthlyURL]...)
 	mu.Unlock()
 	if requestCount != 3 {
 		t.Fatalf("api-call requests = %d, want one Codex and two xAI billing requests", requestCount)
+	}
+	if !reflect.DeepEqual(codexUserAgents, []string{"codex-test-agent"}) {
+		t.Fatalf("Codex User-Agent values = %#v", codexUserAgents)
+	}
+	if !reflect.DeepEqual(xaiWeeklyUserAgents, []string{"xai-test-agent"}) || !reflect.DeepEqual(xaiMonthlyUserAgents, []string{"xai-test-agent"}) {
+		t.Fatalf("xAI User-Agent values = weekly %#v monthly %#v", xaiWeeklyUserAgents, xaiMonthlyUserAgents)
 	}
 }
 

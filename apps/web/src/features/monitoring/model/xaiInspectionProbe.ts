@@ -174,7 +174,8 @@ export const inspectSingleXaiAccount = async (
       probeXaiBilling(
         account.raw,
         t,
-        settings.timeout > 0 ? { timeout: settings.timeout } : undefined
+        settings.timeout > 0 ? { timeout: settings.timeout } : undefined,
+        { userAgent: settings.xaiUserAgent }
       )
     );
     const blockingFailure = probe.failures.find(

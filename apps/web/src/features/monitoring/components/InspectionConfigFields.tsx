@@ -24,7 +24,7 @@ type InspectionConfigFieldsProps = {
   onAutoRecoverEnabledChange: (enabled: boolean) => void;
 };
 
-// 本地与服务端共享的 9 个配置字段。分组:基础规则 → 自动处置 → 高级(默认折叠)。
+// 本地与服务端共享同一套配置字段。分组:基础规则 → 自动处置 → 高级(默认折叠)。
 // 字段 id 与 field 名一致,供概览卡点击后在 Drawer 内定位聚焦。
 export function InspectionConfigFields({
   draft,
@@ -35,6 +35,8 @@ export function InspectionConfigFields({
   onAutoActionModeChange,
   onAutoRecoverEnabledChange,
 }: InspectionConfigFieldsProps) {
+  const includesCodex = draft.targetTypes.includes('codex');
+  const includesXAI = draft.targetTypes.includes('xai');
   const handleTargetTypeChange = (targetType: CodexInspectionTargetType, checked: boolean) => {
     const selected = new Set(draft.targetTypes);
     if (checked) {
@@ -81,21 +83,23 @@ export function InspectionConfigFields({
           <span>{t('monitoring.codex_inspection_settings_group_strategy')}</span>
         </header>
         <div className={styles.serverConfigGrid}>
-          <div className={styles.serverField}>
-            <Input
-              id="usedPercentThreshold"
-              label={t('monitoring.codex_inspection_settings_used_percent_threshold_label')}
-              hint={t('monitoring.codex_inspection_settings_threshold_hint')}
-              error={errors.usedPercentThreshold}
-              type="number"
-              min={0}
-              max={100}
-              step={0.1}
-              value={draft.usedPercentThreshold}
-              onChange={(event) => onFieldChange('usedPercentThreshold', event.target.value)}
-            />
-          </div>
-          <div className={styles.serverField}>
+          {includesCodex ? (
+            <div className={styles.serverField}>
+              <Input
+                id="usedPercentThreshold"
+                label={t('monitoring.codex_inspection_settings_used_percent_threshold_label')}
+                hint={t('monitoring.codex_inspection_settings_threshold_hint')}
+                error={errors.usedPercentThreshold}
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={draft.usedPercentThreshold}
+                onChange={(event) => onFieldChange('usedPercentThreshold', event.target.value)}
+              />
+            </div>
+          ) : null}
+          <div className={`${styles.serverField} ${includesCodex ? '' : styles.serverFieldHalf}`}>
             <Input
               id="sampleSize"
               label={t('monitoring.codex_inspection_settings_sample_size_label')}
@@ -182,14 +186,28 @@ export function InspectionConfigFields({
               onChange={(event) => onFieldChange('retries', event.target.value)}
             />
           </div>
-          <div className={`${styles.serverField} ${styles.serverFieldWide}`}>
-            <Input
-              id="userAgent"
-              label={t('monitoring.codex_inspection_settings_user_agent_label')}
-              value={draft.userAgent}
-              onChange={(event) => onFieldChange('userAgent', event.target.value)}
-            />
-          </div>
+          {includesCodex ? (
+            <div className={`${styles.serverField} ${styles.serverFieldWide}`}>
+              <Input
+                id="codexUserAgent"
+                label={t('monitoring.codex_inspection_settings_codex_user_agent_label')}
+                hint={t('monitoring.codex_inspection_settings_codex_user_agent_hint')}
+                value={draft.codexUserAgent}
+                onChange={(event) => onFieldChange('codexUserAgent', event.target.value)}
+              />
+            </div>
+          ) : null}
+          {includesXAI ? (
+            <div className={`${styles.serverField} ${styles.serverFieldWide}`}>
+              <Input
+                id="xaiUserAgent"
+                label={t('monitoring.codex_inspection_settings_xai_user_agent_label')}
+                hint={t('monitoring.codex_inspection_settings_xai_user_agent_hint')}
+                value={draft.xaiUserAgent}
+                onChange={(event) => onFieldChange('xaiUserAgent', event.target.value)}
+              />
+            </div>
+          ) : null}
         </div>
       </details>
     </>

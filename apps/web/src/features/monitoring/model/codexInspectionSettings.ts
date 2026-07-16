@@ -8,6 +8,7 @@ import type {
 } from '@/features/monitoring/codexInspection';
 import type { Config } from '@/types';
 import { normalizeNumberValue } from '@/utils/quota';
+import { CODEX_REQUEST_HEADERS, XAI_GROK_USER_AGENT } from '@/utils/quota/constants';
 
 export const CODEX_INSPECTION_SETTINGS_STORAGE_KEY = 'cli-proxy-codex-inspection-settings-v1';
 
@@ -20,6 +21,9 @@ export const CODEX_INSPECTION_AUTO_ACTION_MODES: readonly CodexInspectionAutoAct
 
 export const CODEX_INSPECTION_TARGET_TYPES: readonly CodexInspectionTargetType[] = ['codex', 'xai'];
 
+export const DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT = CODEX_REQUEST_HEADERS['User-Agent'];
+export const DEFAULT_CODEX_INSPECTION_XAI_USER_AGENT = XAI_GROK_USER_AGENT;
+
 export const DEFAULT_CODEX_INSPECTION_SETTINGS: CodexInspectionConfigurableSettings = {
   targetTypes: ['codex'],
   targetType: 'codex',
@@ -27,7 +31,9 @@ export const DEFAULT_CODEX_INSPECTION_SETTINGS: CodexInspectionConfigurableSetti
   deleteWorkers: 4,
   timeout: 15000,
   retries: 0,
-  userAgent: 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+  codexUserAgent: DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT,
+  xaiUserAgent: DEFAULT_CODEX_INSPECTION_XAI_USER_AGENT,
+  userAgent: DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT,
   usedPercentThreshold: 100,
   sampleSize: 0,
   autoActionMode: 'none',
@@ -54,6 +60,34 @@ const normalizeThreshold = (value: unknown) => {
 export const readString = (value: unknown) => {
   if (value === undefined || value === null) return '';
   return String(value).trim();
+};
+
+type InspectionUserAgentInput = {
+  codexUserAgent?: unknown;
+  xaiUserAgent?: unknown;
+  userAgent?: unknown;
+};
+
+export const normalizeInspectionUserAgents = (
+  input?: InspectionUserAgentInput | null,
+  fallback?: InspectionUserAgentInput | null
+) => {
+  const fallbackCodexUserAgent =
+    readString(fallback?.codexUserAgent) ||
+    readString(fallback?.userAgent) ||
+    DEFAULT_CODEX_INSPECTION_CODEX_USER_AGENT;
+  const codexUserAgent =
+    readString(input?.codexUserAgent) || readString(input?.userAgent) || fallbackCodexUserAgent;
+  const xaiUserAgent =
+    readString(input?.xaiUserAgent) ||
+    readString(fallback?.xaiUserAgent) ||
+    DEFAULT_CODEX_INSPECTION_XAI_USER_AGENT;
+
+  return {
+    codexUserAgent,
+    xaiUserAgent,
+    userAgent: codexUserAgent,
+  };
 };
 
 export const readBoolean = (value: unknown, fallback: boolean) => {
@@ -167,6 +201,8 @@ export const readConfigurableSettingsFromConfig = (
     deleteWorkers: normalizeNumberValue(clean?.deleteWorkers) ?? undefined,
     timeout: normalizeNumberValue(clean?.timeout) ?? undefined,
     retries: normalizeNumberValue(clean?.retries) ?? undefined,
+    codexUserAgent: readString(clean?.codexUserAgent),
+    xaiUserAgent: readString(clean?.xaiUserAgent),
     userAgent: readString(clean?.userAgent),
     usedPercentThreshold: normalizeNumberValue(clean?.usedPercentThreshold) ?? undefined,
     sampleSize: normalizeNumberValue(clean?.sampleSize) ?? undefined,
@@ -185,6 +221,8 @@ type CodexInspectionConfigurableSettingsInput = {
   deleteWorkers?: unknown;
   timeout?: unknown;
   retries?: unknown;
+  codexUserAgent?: unknown;
+  xaiUserAgent?: unknown;
   userAgent?: unknown;
   usedPercentThreshold?: unknown;
   sampleSize?: unknown;
@@ -201,6 +239,7 @@ export const normalizeConfigurableSettings = (
     input?.targetType,
     DEFAULT_CODEX_INSPECTION_SETTINGS.targetTypes
   );
+  const userAgents = normalizeInspectionUserAgents(input, DEFAULT_CODEX_INSPECTION_SETTINGS);
   const merged = {
     ...DEFAULT_CODEX_INSPECTION_SETTINGS,
     ...(input ?? {}),
@@ -232,7 +271,7 @@ export const normalizeConfigurableSettings = (
       retriesValue === null
         ? DEFAULT_CODEX_INSPECTION_SETTINGS.retries
         : Math.max(0, Math.floor(retriesValue)),
-    userAgent: readString(merged.userAgent) || DEFAULT_CODEX_INSPECTION_SETTINGS.userAgent,
+    ...userAgents,
     usedPercentThreshold: Number.isFinite(threshold)
       ? Math.max(0, Math.min(100, threshold))
       : DEFAULT_CODEX_INSPECTION_SETTINGS.usedPercentThreshold,
@@ -264,6 +303,8 @@ export const loadCodexInspectionConfigurableSettings = (
     }
     const parsedHasTargetTypes = Object.prototype.hasOwnProperty.call(parsed, 'targetTypes');
     const parsedHasLegacyTargetType = Object.prototype.hasOwnProperty.call(parsed, 'targetType');
+    const parsedHasCodexUserAgent = Object.prototype.hasOwnProperty.call(parsed, 'codexUserAgent');
+    const parsedHasLegacyUserAgent = Object.prototype.hasOwnProperty.call(parsed, 'userAgent');
     return normalizeConfigurableSettings({
       ...configSettings,
       ...parsed,
@@ -272,6 +313,11 @@ export const loadCodexInspectionConfigurableSettings = (
         : parsedHasLegacyTargetType
           ? undefined
           : configSettings.targetTypes,
+      codexUserAgent: parsedHasCodexUserAgent
+        ? parsed.codexUserAgent
+        : parsedHasLegacyUserAgent
+          ? undefined
+          : configSettings.codexUserAgent,
     });
   } catch {
     return normalizeConfigurableSettings(configSettings);

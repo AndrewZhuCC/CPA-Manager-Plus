@@ -750,7 +750,7 @@ func (s *Service) requestCodexUsageAt(
 	headers := map[string]string{
 		"Authorization": "Bearer $TOKEN$",
 		"Content-Type":  "application/json",
-		"User-Agent":    settings.UserAgent,
+		"User-Agent":    settings.CodexUserAgent,
 	}
 	if strings.TrimSpace(item.AccountID) != "" {
 		headers["Chatgpt-Account-Id"] = strings.TrimSpace(item.AccountID)

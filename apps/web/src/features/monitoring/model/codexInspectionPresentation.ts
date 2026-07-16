@@ -381,8 +381,12 @@ export const summarizeInspectionError = (
   if (item.action === 'reauth' || item.statusCode === 401) {
     return t('monitoring.codex_inspection_error_summary_reauth');
   }
-  if (item.errorKind) {
-    return t('monitoring.codex_inspection_error_summary_kind', { kind: item.errorKind });
+  const errorKind = item.errorKind?.trim() ?? '';
+  if (errorKind.endsWith('_healthy') || errorKind === 'billing_partial') {
+    return '';
+  }
+  if (errorKind) {
+    return t('monitoring.codex_inspection_error_summary_kind', { kind: errorKind });
   }
   const raw = item.error || item.errorDetail;
   if (!raw) return '';

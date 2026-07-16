@@ -33,6 +33,7 @@ import {
   isActionableServerCodexInspectionResult,
   isPendingServerReauthResult,
   normalizeServerCodexInspectionActionStatus,
+  summarizeInspectionError,
   validateInspectionConfigDraft,
 } from './model/codexInspectionPresentation';
 import {
@@ -400,6 +401,26 @@ describe('Codex inspection settings', () => {
         scheduleLabel: 'Every 60 minutes',
       })
     ).not.toEqual(expect.arrayContaining([expect.objectContaining({ key: 'threshold' })]));
+  });
+
+  it('does not present healthy or partial xAI classifications as errors', () => {
+    const t = ((key: string, values?: Record<string, unknown>) =>
+      key === 'monitoring.codex_inspection_error_summary_kind'
+        ? `Error kind: ${values?.kind}`
+        : key) as never;
+    const base = {
+      action: 'keep' as const,
+      statusCode: 200,
+      error: '',
+      errorDetail: '',
+    };
+
+    expect(summarizeInspectionError({ ...base, errorKind: 'billing_healthy' }, t)).toBe('');
+    expect(summarizeInspectionError({ ...base, errorKind: 'inference_healthy' }, t)).toBe('');
+    expect(summarizeInspectionError({ ...base, errorKind: 'billing_partial' }, t)).toBe('');
+    expect(summarizeInspectionError({ ...base, errorKind: 'upstream_error' }, t)).toBe(
+      'Error kind: upstream_error'
+    );
   });
 });
 

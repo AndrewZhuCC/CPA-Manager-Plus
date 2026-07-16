@@ -88,7 +88,7 @@ describe('inspectSingleXaiAccount', () => {
       statusCode: 200,
       usedPercent: 40,
       isQuota: false,
-      errorKind: 'billing_healthy',
+      errorKind: '',
     });
     expect((result.quotaWindows ?? []).map((window) => window.id)).toEqual([
       'xai-weekly',

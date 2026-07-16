@@ -106,7 +106,6 @@ func (s *Service) inspectSingleXAIAccount(
 	base.Action = "keep"
 	base.ActionReason = "monitoring.xai_inspection_reason_billing_healthy"
 	base.StatusCode = intPointer(http.StatusOK)
-	base.ErrorKind = "billing_healthy"
 	if probe.Partial {
 		base.ActionReason = "monitoring.xai_inspection_reason_billing_partial"
 		base.ErrorKind = "billing_partial"

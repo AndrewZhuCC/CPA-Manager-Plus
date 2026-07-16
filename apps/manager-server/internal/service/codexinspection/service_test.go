@@ -174,7 +174,7 @@ func TestRunXAIUsesBillingEndpointsInsteadOfCodexUsage(t *testing.T) {
 	if len(result.Results) != 1 || result.Results[0].Provider != "xai" || result.Results[0].Action != "keep" {
 		t.Fatalf("xAI result = %#v", result.Results)
 	}
-	if result.Results[0].ErrorKind != "billing_healthy" || len(result.Results[0].QuotaWindows) != 2 {
+	if result.Results[0].ErrorKind != "" || len(result.Results[0].QuotaWindows) != 2 {
 		t.Fatalf("xAI billing result = %#v", result.Results[0])
 	}
 }

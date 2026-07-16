@@ -230,7 +230,7 @@ export const inspectSingleXaiAccount = async (
       error: '',
       planType: 'xai',
       quotaWindows: buildXaiQuotaWindows(summary),
-      errorKind: probe.partial ? 'billing_partial' : 'billing_healthy',
+      errorKind: probe.partial ? 'billing_partial' : '',
       errorDetail: probe.partial
         ? truncateDetail(
             probe.failures

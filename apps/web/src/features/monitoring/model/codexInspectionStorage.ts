@@ -14,6 +14,7 @@ import {
   clampPositiveInteger,
   isRecord,
   normalizeConfigurableSettings,
+  normalizeInspectionTargetTypes,
   normalizeInspectionAction,
   normalizeLogLevel,
   normalizeStoredActionFilter,
@@ -38,27 +39,32 @@ export const sortCodexInspectionResults = (items: CodexInspectionResultItem[]) =
 
 const sanitizeInspectionSettingsForStorage = (
   settings: CodexInspectionSettings
-): CodexInspectionSettings => ({
-  baseUrl: '',
-  token: '',
-  targetType: readString(settings.targetType) || DEFAULT_CODEX_INSPECTION_SETTINGS.targetType,
-  workers: clampPositiveInteger(settings.workers, DEFAULT_CODEX_INSPECTION_SETTINGS.workers),
-  deleteWorkers: clampPositiveInteger(
-    settings.deleteWorkers,
-    DEFAULT_CODEX_INSPECTION_SETTINGS.deleteWorkers
-  ),
-  timeout: clampPositiveInteger(settings.timeout, DEFAULT_CODEX_INSPECTION_SETTINGS.timeout),
-  retries: Math.max(0, Math.floor(normalizeNumberValue(settings.retries) ?? 0)),
-  userAgent: readString(settings.userAgent) || DEFAULT_CODEX_INSPECTION_SETTINGS.userAgent,
-  usedPercentThreshold:
-    normalizeNumberValue(settings.usedPercentThreshold) ??
-    DEFAULT_CODEX_INSPECTION_SETTINGS.usedPercentThreshold,
-  sampleSize: Math.max(0, Math.floor(normalizeNumberValue(settings.sampleSize) ?? 0)),
-});
+): CodexInspectionSettings => {
+  const targetTypes = normalizeInspectionTargetTypes(settings.targetTypes, settings.targetType);
+  return {
+    baseUrl: '',
+    token: '',
+    targetTypes,
+    targetType: targetTypes[0],
+    workers: clampPositiveInteger(settings.workers, DEFAULT_CODEX_INSPECTION_SETTINGS.workers),
+    deleteWorkers: clampPositiveInteger(
+      settings.deleteWorkers,
+      DEFAULT_CODEX_INSPECTION_SETTINGS.deleteWorkers
+    ),
+    timeout: clampPositiveInteger(settings.timeout, DEFAULT_CODEX_INSPECTION_SETTINGS.timeout),
+    retries: Math.max(0, Math.floor(normalizeNumberValue(settings.retries) ?? 0)),
+    userAgent: readString(settings.userAgent) || DEFAULT_CODEX_INSPECTION_SETTINGS.userAgent,
+    usedPercentThreshold:
+      normalizeNumberValue(settings.usedPercentThreshold) ??
+      DEFAULT_CODEX_INSPECTION_SETTINGS.usedPercentThreshold,
+    sampleSize: Math.max(0, Math.floor(normalizeNumberValue(settings.sampleSize) ?? 0)),
+  };
+};
 
 const normalizeStoredSettings = (value: unknown): CodexInspectionSettings => {
   const input = isRecord(value) ? value : {};
   const configurable = normalizeConfigurableSettings({
+    targetTypes: input.targetTypes,
     targetType: input.targetType,
     workers: input.workers,
     deleteWorkers: input.deleteWorkers,
@@ -72,6 +78,7 @@ const normalizeStoredSettings = (value: unknown): CodexInspectionSettings => {
   return {
     baseUrl: '',
     token: '',
+    targetTypes: configurable.targetTypes,
     targetType: configurable.targetType,
     workers: configurable.workers,
     deleteWorkers: configurable.deleteWorkers,

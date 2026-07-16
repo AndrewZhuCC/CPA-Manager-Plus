@@ -27,7 +27,9 @@ import {
   type CodexInspectionAction,
   type CodexInspectionResultItem,
   type CodexInspectionRunResult,
+  type CodexInspectionTargetType,
 } from '@/features/monitoring/codexInspection';
+import { normalizeInspectionTargetTypes } from '@/features/monitoring/model/codexInspectionSettings';
 import {
   CODEX_INSPECTION_RESULT_PAGE_SIZE_OPTIONS,
   buildCodexInspectionPaginationState,
@@ -82,7 +84,7 @@ type ServerCodexInspectionDraft = {
   intervalMinutes: string;
   timePoints: string;
   timeZone: string;
-  targetType: string;
+  targetTypes: CodexInspectionTargetType[];
   workers: string;
   deleteWorkers: string;
   timeout: string;
@@ -102,6 +104,7 @@ type NormalizedServerCodexInspectionConfig = {
     timePoints: string[];
     timeZone: string;
   };
+  targetTypes: CodexInspectionTargetType[];
   targetType: string;
   workers: number;
   deleteWorkers: number;
@@ -122,6 +125,7 @@ const DEFAULT_SERVER_CODEX_CONFIG: NormalizedServerCodexInspectionConfig = {
     timePoints: [],
     timeZone: '',
   },
+  targetTypes: ['codex'],
   targetType: 'codex',
   workers: 4,
   deleteWorkers: 4,
@@ -170,6 +174,11 @@ const resolveServerCodexConfig = (
     : schedule.timePoints && schedule.timePoints.length > 0
       ? 'time_points'
       : DEFAULT_SERVER_CODEX_CONFIG.schedule.mode;
+  const targetTypes = normalizeInspectionTargetTypes(
+    config?.targetTypes,
+    config?.targetType,
+    DEFAULT_SERVER_CODEX_CONFIG.targetTypes
+  );
 
   return {
     ...DEFAULT_SERVER_CODEX_CONFIG,
@@ -187,7 +196,8 @@ const resolveServerCodexConfig = (
           ? schedule.timeZone
           : DEFAULT_SERVER_CODEX_CONFIG.schedule.timeZone,
     },
-    targetType: config?.targetType || DEFAULT_SERVER_CODEX_CONFIG.targetType,
+    targetTypes,
+    targetType: targetTypes[0],
     workers:
       config?.workers && config.workers > 0 ? config.workers : DEFAULT_SERVER_CODEX_CONFIG.workers,
     deleteWorkers:
@@ -223,7 +233,7 @@ const toDraft = (config?: ManagerCodexInspectionConfig | null): ServerCodexInspe
     intervalMinutes: String(resolved.schedule.intervalMinutes),
     timePoints: resolved.schedule.timePoints.join(', '),
     timeZone: resolved.schedule.timeZone,
-    targetType: resolved.targetType,
+    targetTypes: [...resolved.targetTypes],
     workers: String(resolved.workers),
     deleteWorkers: String(resolved.deleteWorkers),
     timeout: String(resolved.timeout),
@@ -313,6 +323,7 @@ const createConfigFromDraft = (
             timePoints,
             timeZone: draft.timeZone.trim(),
           },
+    targetTypes: validation.values.targetTypes,
     targetType: validation.values.targetType,
     workers: validation.values.workers,
     deleteWorkers: validation.values.deleteWorkers,
@@ -449,6 +460,7 @@ function getComparableConfig(config: NormalizedServerCodexInspectionConfig) {
     intervalMinutes: config.schedule.intervalMinutes,
     timePoints: normalizeTimePointList(config.schedule.timePoints),
     timeZone: (config.schedule.timeZone || '').trim(),
+    targetTypes: config.targetTypes,
     targetType: config.targetType.trim(),
     workers: config.workers,
     deleteWorkers: config.deleteWorkers,
@@ -1572,6 +1584,7 @@ export function ServerCodexInspectionPage() {
           errors={fieldErrors}
           t={t}
           onFieldChange={(field, value) => updateDraft(field, value)}
+          onTargetTypesChange={(value) => updateDraft('targetTypes', value)}
           onAutoActionModeChange={(value) => updateDraft('autoActionMode', value)}
           onAutoRecoverEnabledChange={(value) => updateDraft('autoRecoverEnabled', value)}
         />
@@ -1681,6 +1694,7 @@ export function ServerCodexInspectionPage() {
           settings: {
             baseUrl: serviceBase,
             token: '',
+            targetTypes: selectedConfig.targetTypes,
             targetType: selectedConfig.targetType,
             workers: selectedConfig.workers,
             deleteWorkers: selectedConfig.deleteWorkers,

@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 const (
 	CodexInspectionScheduleModeInterval   = "interval"
 	CodexInspectionScheduleModeTimePoints = "time_points"
+	CodexInspectionTargetCodex            = "codex"
+	CodexInspectionTargetXAI              = "xai"
 
 	CodexInspectionAutoActionNone    = "none"
 	CodexInspectionAutoActionEnable  = "enable"
@@ -36,6 +39,7 @@ const (
 type ManagerCodexInspectionConfig struct {
 	Enabled              *bool                                `json:"enabled,omitempty"`
 	Schedule             ManagerCodexInspectionScheduleConfig `json:"schedule"`
+	TargetTypes          []string                             `json:"targetTypes,omitempty"`
 	TargetType           string                               `json:"targetType,omitempty"`
 	Workers              int                                  `json:"workers,omitempty"`
 	DeleteWorkers        int                                  `json:"deleteWorkers,omitempty"`
@@ -144,7 +148,8 @@ func DefaultCodexInspectionConfig() ManagerCodexInspectionConfig {
 			Mode:            CodexInspectionScheduleModeInterval,
 			IntervalMinutes: 60,
 		},
-		TargetType:           "codex",
+		TargetTypes:          []string{CodexInspectionTargetCodex},
+		TargetType:           CodexInspectionTargetCodex,
 		Workers:              4,
 		DeleteWorkers:        4,
 		Timeout:              15000,
@@ -159,16 +164,16 @@ func DefaultCodexInspectionConfig() ManagerCodexInspectionConfig {
 
 func NormalizeCodexInspectionConfig(input ManagerCodexInspectionConfig, fallback ManagerCodexInspectionConfig) ManagerCodexInspectionConfig {
 	base := fallback
-	if base.TargetType == "" {
-		base = DefaultCodexInspectionConfig()
-	}
+	base.TargetTypes = NormalizeCodexInspectionTargetTypes(base.TargetTypes, base.TargetType, nil)
+	base.TargetType = base.TargetTypes[0]
 
 	next := base
 	if input.Enabled != nil {
 		next.Enabled = boolPtr(*input.Enabled)
 	}
 	next.Schedule = NormalizeCodexInspectionSchedule(input.Schedule, base.Schedule)
-	next.TargetType = valueOrLower(input.TargetType, base.TargetType)
+	next.TargetTypes = NormalizeCodexInspectionTargetTypes(input.TargetTypes, input.TargetType, base.TargetTypes)
+	next.TargetType = next.TargetTypes[0]
 	next.Workers = positiveOr(input.Workers, base.Workers)
 	next.DeleteWorkers = positiveOr(input.DeleteWorkers, positiveOr(input.Workers, base.DeleteWorkers))
 	next.Timeout = positiveOr(input.Timeout, base.Timeout)
@@ -244,11 +249,61 @@ func NormalizeCodexInspectionTimeZone(value string, fallback string) string {
 }
 
 func ValidateCodexInspectionConfig(input ManagerCodexInspectionConfig) error {
+	if input.TargetTypes != nil {
+		if len(input.TargetTypes) == 0 {
+			return errors.New("at least one inspection target type is required")
+		}
+		for _, value := range input.TargetTypes {
+			if !isSupportedCodexInspectionTargetType(value) {
+				return fmt.Errorf("unsupported inspection target type %q", value)
+			}
+		}
+	}
 	targetType := strings.ToLower(strings.TrimSpace(input.TargetType))
-	if targetType != "" && targetType != "codex" && targetType != "xai" {
+	if targetType != "" && !isSupportedCodexInspectionTargetType(targetType) {
 		return fmt.Errorf("unsupported inspection target type %q", input.TargetType)
 	}
 	return ValidateCodexInspectionSchedule(input.Schedule)
+}
+
+func NormalizeCodexInspectionTargetTypes(values []string, legacyValue string, fallback []string) []string {
+	if normalized := normalizeCodexInspectionTargetTypes(values); len(normalized) > 0 {
+		return normalized
+	}
+	if normalized := normalizeCodexInspectionTargetTypes([]string{legacyValue}); len(normalized) > 0 {
+		return normalized
+	}
+	if normalized := normalizeCodexInspectionTargetTypes(fallback); len(normalized) > 0 {
+		return normalized
+	}
+	return []string{CodexInspectionTargetCodex}
+}
+
+func normalizeCodexInspectionTargetTypes(values []string) []string {
+	selected := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if isSupportedCodexInspectionTargetType(normalized) {
+			selected[normalized] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(selected))
+	for _, value := range []string{CodexInspectionTargetCodex, CodexInspectionTargetXAI} {
+		if _, ok := selected[value]; ok {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func isSupportedCodexInspectionTargetType(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case CodexInspectionTargetCodex, CodexInspectionTargetXAI:
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidateCodexInspectionSchedule(input ManagerCodexInspectionScheduleConfig) error {

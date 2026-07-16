@@ -8,6 +8,7 @@ import {
   type CodexInspectionRunResult,
   type CodexInspectionStoredActionFilter,
   type CodexInspectionStoredLogEntry,
+  type CodexInspectionTargetType,
 } from '@/features/monitoring/codexInspection';
 import type { CodexInspectionResult } from '@/services/api/usageService';
 
@@ -68,7 +69,7 @@ export type CodexInspectionPaginationState<T> = {
 };
 
 export type InspectionSettingsDraft = {
-  targetType: string;
+  targetTypes: CodexInspectionTargetType[];
   workers: string;
   deleteWorkers: string;
   timeout: string;
@@ -82,7 +83,7 @@ export type InspectionSettingsDraft = {
 
 export type InspectionSettingsDraftField = Exclude<
   keyof InspectionSettingsDraft,
-  'autoActionMode' | 'autoRecoverEnabled'
+  'targetTypes' | 'autoActionMode' | 'autoRecoverEnabled'
 >;
 
 export const ACTION_FILTERS: ActionFilter[] = [
@@ -110,7 +111,7 @@ export const formatPercent = (value: number | null) =>
 export const toSettingsDraft = (
   settings: CodexInspectionConfigurableSettings
 ): InspectionSettingsDraft => ({
-  targetType: settings.targetType,
+  targetTypes: [...settings.targetTypes],
   workers: String(settings.workers),
   deleteWorkers: String(settings.deleteWorkers),
   timeout: String(settings.timeout),
@@ -452,7 +453,6 @@ export const formatAutoActionModeLabel = (mode: CodexInspectionAutoActionMode, t
 // ─── 共享配置：字段级校验 + 概览卡数据 ───────────────────────────────
 // 本地与服务端共有的可校验文本字段（autoActionMode 走卡片选择,无需文本校验）。
 export type SharedInspectionConfigField =
-  | 'targetType'
   | 'usedPercentThreshold'
   | 'sampleSize'
   | 'workers'
@@ -464,13 +464,17 @@ export type SharedInspectionConfigField =
 export type SharedInspectionConfigDraft = {
   [K in SharedInspectionConfigField]: string;
 } & {
+  targetTypes: CodexInspectionTargetType[];
   autoActionMode: CodexInspectionAutoActionMode | string;
   autoRecoverEnabled: boolean;
 };
 
-export type InspectionConfigFieldErrors = Partial<Record<SharedInspectionConfigField, string>>;
+export type InspectionConfigFieldErrors = Partial<
+  Record<SharedInspectionConfigField | 'targetTypes', string>
+>;
 
 export type ValidatedInspectionConfigValues = {
+  targetTypes: CodexInspectionTargetType[];
   targetType: string;
   workers: number;
   deleteWorkers: number;
@@ -509,8 +513,8 @@ export const validateInspectionConfigFields = (
 ): InspectionConfigFieldErrors => {
   const errors: InspectionConfigFieldErrors = {};
 
-  if (!['codex', 'xai'].includes(draft.targetType.trim().toLowerCase())) {
-    errors.targetType = t('monitoring.codex_inspection_settings_target_type_required');
+  if (draft.targetTypes.length === 0) {
+    errors.targetTypes = t('monitoring.codex_inspection_settings_target_type_required');
   }
 
   const checkInteger = (field: SharedInspectionConfigField, min: number, labelKey: string) => {
@@ -555,7 +559,8 @@ export const validateInspectionConfigDraft = (
     ok: true,
     errors,
     values: {
-      targetType: draft.targetType.trim(),
+      targetTypes: [...draft.targetTypes],
+      targetType: draft.targetTypes[0],
       workers: Number(draft.workers.trim()),
       deleteWorkers: Number(draft.deleteWorkers.trim()),
       timeout: Number(draft.timeout.trim()),
@@ -596,7 +601,7 @@ export type ConfigOverviewItem = {
 
 type ConfigOverviewSettings = Pick<
   CodexInspectionConfigurableSettings,
-  'targetType' | 'workers' | 'timeout' | 'usedPercentThreshold' | 'sampleSize'
+  'targetTypes' | 'workers' | 'timeout' | 'usedPercentThreshold' | 'sampleSize'
 > & {
   autoActionMode: CodexInspectionAutoActionMode | string;
   autoRecoverEnabled: boolean;
@@ -625,6 +630,13 @@ export const buildConfigOverviewItems = (
     settings.sampleSize > 0
       ? String(settings.sampleSize)
       : t('monitoring.server_codex_inspection_sample_all');
+  const targetTypesLabel = settings.targetTypes
+    .map((targetType) =>
+      targetType === 'xai'
+        ? t('monitoring.codex_inspection_target_xai')
+        : t('monitoring.codex_inspection_target_codex')
+    )
+    .join(' + ');
 
   if (options.mode === 'server') {
     return [
@@ -642,6 +654,12 @@ export const buildConfigOverviewItems = (
         label: t('monitoring.server_codex_inspection_config_summary_trigger'),
         value: options.scheduleLabel,
         field: 'schedule',
+      },
+      {
+        key: 'target',
+        label: t('monitoring.codex_inspection_target_type'),
+        value: targetTypesLabel,
+        field: 'targetTypes',
       },
       {
         key: 'threshold',
@@ -709,8 +727,8 @@ export const buildConfigOverviewItems = (
     {
       key: 'target',
       label: t('monitoring.codex_inspection_target_type'),
-      value: settings.targetType,
-      field: 'targetType',
+      value: targetTypesLabel,
+      field: 'targetTypes',
     },
   ];
 };

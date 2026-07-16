@@ -1,10 +1,69 @@
 package model
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestNormalizeCodexInspectionConfigMigratesLegacyTargetType(t *testing.T) {
+	input := ManagerCodexInspectionConfig{TargetType: " XAI "}
+
+	got := NormalizeCodexInspectionConfig(input, DefaultCodexInspectionConfig())
+
+	if !reflect.DeepEqual(got.TargetTypes, []string{CodexInspectionTargetXAI}) {
+		t.Fatalf("TargetTypes = %#v, want xai", got.TargetTypes)
+	}
+	if got.TargetType != CodexInspectionTargetXAI {
+		t.Fatalf("TargetType = %q, want xai", got.TargetType)
+	}
+}
+
+func TestNormalizeCodexInspectionConfigSupportsMultipleTargets(t *testing.T) {
+	input := ManagerCodexInspectionConfig{
+		TargetTypes: []string{"xai", "codex", "xai"},
+		TargetType:  "xai",
+	}
+
+	got := NormalizeCodexInspectionConfig(input, DefaultCodexInspectionConfig())
+
+	if !reflect.DeepEqual(got.TargetTypes, []string{CodexInspectionTargetCodex, CodexInspectionTargetXAI}) {
+		t.Fatalf("TargetTypes = %#v, want codex and xai", got.TargetTypes)
+	}
+	if got.TargetType != CodexInspectionTargetCodex {
+		t.Fatalf("legacy TargetType = %q, want first normalized target", got.TargetType)
+	}
+}
+
+func TestValidateCodexInspectionConfigRejectsInvalidTargetTypes(t *testing.T) {
+	if err := ValidateCodexInspectionConfig(ManagerCodexInspectionConfig{TargetTypes: []string{}}); err == nil {
+		t.Fatal("expected an explicitly empty targetTypes list to fail validation")
+	}
+	if err := ValidateCodexInspectionConfig(ManagerCodexInspectionConfig{TargetTypes: []string{"codex", "anthropic"}}); err == nil {
+		t.Fatal("expected an unsupported target type to fail validation")
+	}
+}
+
+func TestUnmarshalCodexInspectionSettingsMigratesLegacyTargetType(t *testing.T) {
+	got := UnmarshalCodexInspectionSettings(`{"targetType":"xai"}`)
+
+	if !reflect.DeepEqual(got.TargetTypes, []string{CodexInspectionTargetXAI}) || got.TargetType != CodexInspectionTargetXAI {
+		t.Fatalf("legacy settings = %#v", got)
+	}
+}
+
+func TestCodexInspectionSettingsRoundTripPreservesMultipleTargets(t *testing.T) {
+	settings := NormalizeCodexInspectionConfig(ManagerCodexInspectionConfig{
+		TargetTypes: []string{CodexInspectionTargetCodex, CodexInspectionTargetXAI},
+	}, DefaultCodexInspectionConfig())
+
+	got := UnmarshalCodexInspectionSettings(MarshalCodexInspectionSettings(settings))
+
+	if !reflect.DeepEqual(got.TargetTypes, settings.TargetTypes) || got.TargetType != CodexInspectionTargetCodex {
+		t.Fatalf("round-tripped settings = %#v", got)
+	}
+}
 
 func TestNormalizeCodexInspectionTimeZone(t *testing.T) {
 	cases := []struct {

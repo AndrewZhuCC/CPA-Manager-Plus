@@ -1,8 +1,12 @@
 import type { TFunction } from 'i18next';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
-import type { CodexInspectionAutoActionMode } from '@/features/monitoring/codexInspection';
+import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
+import type {
+  CodexInspectionAutoActionMode,
+  CodexInspectionTargetType,
+} from '@/features/monitoring/codexInspection';
 import { CodexInspectionAutoActionEditor } from '@/features/monitoring/components/CodexInspectionAutoActionEditor';
+import { CODEX_INSPECTION_TARGET_TYPES } from '@/features/monitoring/model/codexInspectionSettings';
 import type {
   InspectionConfigFieldErrors,
   SharedInspectionConfigDraft,
@@ -15,6 +19,7 @@ type InspectionConfigFieldsProps = {
   errors: InspectionConfigFieldErrors;
   t: TFunction;
   onFieldChange: (field: SharedInspectionConfigField, value: string) => void;
+  onTargetTypesChange: (targetTypes: CodexInspectionTargetType[]) => void;
   onAutoActionModeChange: (mode: CodexInspectionAutoActionMode) => void;
   onAutoRecoverEnabledChange: (enabled: boolean) => void;
 };
@@ -26,11 +31,51 @@ export function InspectionConfigFields({
   errors,
   t,
   onFieldChange,
+  onTargetTypesChange,
   onAutoActionModeChange,
   onAutoRecoverEnabledChange,
 }: InspectionConfigFieldsProps) {
+  const handleTargetTypeChange = (targetType: CodexInspectionTargetType, checked: boolean) => {
+    const selected = new Set(draft.targetTypes);
+    if (checked) {
+      selected.add(targetType);
+    } else {
+      selected.delete(targetType);
+    }
+    onTargetTypesChange(CODEX_INSPECTION_TARGET_TYPES.filter((item) => selected.has(item)));
+  };
+
   return (
     <>
+      <section className={styles.configSection} id="targetTypes">
+        <header className={styles.configSectionHeader}>
+          <span>{t('monitoring.codex_inspection_settings_target_type_label')}</span>
+        </header>
+        <div className={styles.targetOptionGrid}>
+          {CODEX_INSPECTION_TARGET_TYPES.map((targetType) => {
+            const checked = draft.targetTypes.includes(targetType);
+            const label =
+              targetType === 'xai'
+                ? t('monitoring.codex_inspection_target_xai')
+                : t('monitoring.codex_inspection_target_codex');
+            return (
+              <SelectionCheckbox
+                key={targetType}
+                checked={checked}
+                onChange={(value) => handleTargetTypeChange(targetType, value)}
+                label={label}
+                ariaLabel={label}
+                className={`${styles.targetOption} ${checked ? styles.targetOptionSelected : ''}`}
+              />
+            );
+          })}
+        </div>
+        <div className={styles.targetOptionHint}>
+          {t('monitoring.codex_inspection_settings_target_type_hint')}
+        </div>
+        {errors.targetTypes ? <div className="error-box">{errors.targetTypes}</div> : null}
+      </section>
+
       <section className={styles.configSection}>
         <header className={styles.configSectionHeader}>
           <span>{t('monitoring.codex_inspection_settings_group_strategy')}</span>
@@ -89,31 +134,6 @@ export function InspectionConfigFields({
           </span>
         </summary>
         <div className={styles.advancedBody}>
-          <div className={styles.serverField}>
-            <div className="form-group">
-              <label className={styles.serverFieldLabel} htmlFor="targetType">
-                {t('monitoring.codex_inspection_settings_target_type_label')}
-              </label>
-              <Select
-                id="targetType"
-                value={draft.targetType}
-                options={[
-                  {
-                    value: 'codex',
-                    label: t('monitoring.codex_inspection_target_codex'),
-                  },
-                  {
-                    value: 'xai',
-                    label: t('monitoring.codex_inspection_target_xai'),
-                  },
-                ]}
-                onChange={(value) => onFieldChange('targetType', value)}
-                ariaLabel={t('monitoring.codex_inspection_settings_target_type_label')}
-              />
-              <div className="hint">{t('monitoring.codex_inspection_settings_target_type_hint')}</div>
-              {errors.targetType ? <div className="error-box">{errors.targetType}</div> : null}
-            </div>
-          </div>
           <div className={styles.serverField}>
             <Input
               id="workers"

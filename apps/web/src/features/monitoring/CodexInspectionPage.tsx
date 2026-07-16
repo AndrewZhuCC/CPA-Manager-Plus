@@ -27,6 +27,7 @@ import {
   type CodexInspectionResultItem,
   type CodexInspectionRunResult,
   type CodexInspectionSession,
+  type CodexInspectionTargetType,
 } from '@/features/monitoring/codexInspection';
 import { Button } from '@/components/ui/Button';
 import { CodexInspectionLogsPanel } from '@/features/monitoring/components/CodexInspectionLogsPanel';
@@ -830,6 +831,13 @@ export function CodexInspectionPage() {
     }));
   }, []);
 
+  const handleTargetTypesChange = useCallback((value: CodexInspectionTargetType[]) => {
+    setSettingsDraft((previous) => ({
+      ...previous,
+      targetTypes: value,
+    }));
+  }, []);
+
   const handleAutoRecoverEnabledChange = useCallback((value: boolean) => {
     setSettingsDraft((previous) => ({
       ...previous,
@@ -844,8 +852,10 @@ export function CodexInspectionPage() {
 
   const hasUnsavedSettings = useMemo(() => {
     const baseline = toSettingsDraft(inspectionSettings);
-    return (Object.keys(baseline) as (keyof InspectionSettingsDraft)[]).some(
-      (key) => baseline[key] !== settingsDraft[key]
+    return (Object.keys(baseline) as (keyof InspectionSettingsDraft)[]).some((key) =>
+      key === 'targetTypes'
+        ? baseline.targetTypes.join(',') !== settingsDraft.targetTypes.join(',')
+        : baseline[key] !== settingsDraft[key]
     );
   }, [inspectionSettings, settingsDraft]);
 
@@ -1060,6 +1070,7 @@ export function CodexInspectionPage() {
           errors={settingsFieldErrors}
           t={t}
           onFieldChange={handleSettingsDraftChange}
+          onTargetTypesChange={handleTargetTypesChange}
           onAutoActionModeChange={handleAutoActionModeChange}
           onAutoRecoverEnabledChange={handleAutoRecoverEnabledChange}
         />

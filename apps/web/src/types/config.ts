@@ -14,6 +14,7 @@ export interface QuotaExceededConfig {
 export interface AuthPoolCleanConfig {
   baseUrl?: string;
   token?: string;
+  targetTypes?: string[];
   targetType?: string;
   workers?: number;
   deleteWorkers?: number;

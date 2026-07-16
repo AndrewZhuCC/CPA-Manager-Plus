@@ -230,6 +230,7 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (RunDetail, error) {
 		"triggerType": triggerType,
 		"triggerKey":  strings.TrimSpace(req.TriggerKey),
 		"targetType":  settings.TargetType,
+		"targetTypes": settings.TargetTypes,
 	})
 
 	files, err := s.fetchAuthFiles(ctx, setup)
@@ -245,8 +246,12 @@ func (s *Service) Run(ctx context.Context, req RunRequest) (RunDetail, error) {
 	s.applyDisableOwnership(ctx, allAccounts, logger)
 
 	accounts := make([]account, 0, len(allAccounts))
+	targetTypes := make(map[string]struct{}, len(settings.TargetTypes))
+	for _, targetType := range settings.TargetTypes {
+		targetTypes[targetType] = struct{}{}
+	}
 	for _, next := range allAccounts {
-		if next.Provider == settings.TargetType {
+		if _, ok := targetTypes[next.Provider]; ok {
 			accounts = append(accounts, next)
 		}
 	}
@@ -353,7 +358,7 @@ func (s *Service) ExecuteManualActions(ctx context.Context, runID int64, req Exe
 	if detail.Run.Status != model.CodexInspectionStatusCompleted {
 		return ExecuteActionsResult{}, ErrRunNotCompleted
 	}
-	if detail.Run.Settings.TargetType != "" {
+	if detail.Run.Settings.TargetType != "" || len(detail.Run.Settings.TargetTypes) > 0 {
 		settings = detail.Run.Settings
 	}
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { probeXaiBilling } from '@/utils/quota/providerRequests';
 import { XaiProbeError, classifyXaiProbe, parseXaiErrorEnvelope } from '@/utils/quota/xaiErrors';
+import type { CodexInspectionSettings } from '../codexInspection';
 import { DEFAULT_CODEX_INSPECTION_SETTINGS } from './codexInspectionSettings';
 import { inspectSingleXaiAccount } from './xaiInspectionProbe';
 
@@ -9,10 +10,11 @@ vi.mock('@/utils/quota/providerRequests', () => ({
 }));
 
 const mockProbeXaiBilling = vi.mocked(probeXaiBilling);
-const settings = {
+const settings: CodexInspectionSettings = {
   baseUrl: '',
   token: '',
   ...DEFAULT_CODEX_INSPECTION_SETTINGS,
+  targetTypes: ['xai'],
   targetType: 'xai',
   usedPercentThreshold: 100,
 };
@@ -74,11 +76,9 @@ describe('inspectSingleXaiAccount', () => {
 
     const result = await inspectSingleXaiAccount(baseAccount, settings);
 
-    expect(mockProbeXaiBilling).toHaveBeenCalledWith(
-      rawAccount,
-      expect.any(Function),
-      { timeout: settings.timeout }
-    );
+    expect(mockProbeXaiBilling).toHaveBeenCalledWith(rawAccount, expect.any(Function), {
+      timeout: settings.timeout,
+    });
 
     expect(result).toMatchObject({
       action: 'keep',

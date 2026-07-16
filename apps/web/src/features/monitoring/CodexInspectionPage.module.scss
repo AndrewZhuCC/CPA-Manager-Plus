@@ -1788,6 +1788,40 @@
   line-height: 1.35;
 }
 
+.targetOptionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.targetOption {
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid var(--inspect-line);
+  border-radius: 8px;
+  background: var(--inspect-surface-elevated);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.targetOption:hover {
+  border-color: color-mix(in srgb, var(--inspect-accent) 32%, var(--inspect-line-strong));
+  background: var(--inspect-surface-hover);
+}
+
+.targetOptionSelected {
+  border-color: color-mix(in srgb, var(--inspect-accent) 48%, var(--inspect-line));
+  background: color-mix(in srgb, var(--inspect-accent) 8%, var(--inspect-surface));
+}
+
+.targetOptionHint {
+  color: var(--inspect-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .configDrawerFooter {
   position: relative;
   z-index: 1;
@@ -2349,5 +2383,38 @@
 
   .configDrawerActions :global(button) {
     width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .configDrawer {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  .configDrawerHeader {
+    padding: 16px 16px 14px;
+  }
+
+  .configDrawerHeader h2 {
+    font-size: 18px;
+  }
+
+  .configDrawerBody {
+    padding: 14px 12px 20px;
+  }
+
+  .configDrawerFooter {
+    padding: 10px 12px;
+  }
+
+  .serverField,
+  .serverFieldHalf,
+  .serverFieldWide {
+    grid-column: span 12;
+  }
+
+  .settingsAutoCards {
+    grid-template-columns: 1fr;
   }
 }

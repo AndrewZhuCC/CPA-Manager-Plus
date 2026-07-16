@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -155,7 +156,8 @@ func TestRunXAIUsesBillingEndpointsInsteadOfCodexUsage(t *testing.T) {
 
 	db := newCodexInspectionTestStore(t)
 	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-	managerCfg.CodexInspection.TargetType = "xai"
+	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 	managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 		t.Fatalf("save manager config: %v", err)
@@ -173,6 +175,68 @@ func TestRunXAIUsesBillingEndpointsInsteadOfCodexUsage(t *testing.T) {
 	}
 	if result.Results[0].ErrorKind != "billing_healthy" || len(result.Results[0].QuotaWindows) != 2 {
 		t.Fatalf("xAI billing result = %#v", result.Results[0])
+	}
+}
+
+func TestRunSupportsCodexAndXAIInTheSameInspection(t *testing.T) {
+	var mu sync.Mutex
+	requestedURLs := make([]string, 0, 3)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v0/management/auth-files" && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"files":[{"name":"codex-auth.json","auth_index":"codex-1","provider":"codex","account":"codex@example.com"},{"name":"xai-auth.json","auth_index":"xai-1","provider":"xai","account":"xai@example.com","user":{"id":"user-1"}}]}`))
+		case r.URL.Path == "/v0/management/api-call" && r.Method == http.MethodPost:
+			var payload struct {
+				URL string `json:"url"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode api-call payload: %v", err)
+			}
+			mu.Lock()
+			requestedURLs = append(requestedURLs, payload.URL)
+			mu.Unlock()
+			switch {
+			case strings.Contains(payload.URL, "format=credits"):
+				_, _ = w.Write([]byte(`{"status_code":200,"body":{"config":{"credit_usage_percent":25,"current_period":{"end":"2026-07-22T00:00:00Z"}}}}`))
+			case strings.Contains(payload.URL, "cli-chat-proxy.grok.com"):
+				_, _ = w.Write([]byte(`{"status_code":200,"body":{"config":{"monthly_limit":10000,"used":4000,"billing_period_end":"2026-08-01T00:00:00Z"}}}`))
+			default:
+				_, _ = w.Write([]byte(`{"status_code":200,"body":{"rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000},"secondary_window":{"used_percent":5,"limit_window_seconds":604800}}}}`))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	db := newCodexInspectionTestStore(t)
+	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
+	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetCodex, model.CodexInspectionTargetXAI}
+	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetCodex
+	managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
+	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
+		t.Fatalf("save manager config: %v", err)
+	}
+
+	result, err := newCodexInspectionTestService(t, db).Run(context.Background(), RunRequest{TriggerType: "manual"})
+	if err != nil {
+		t.Fatalf("run mixed inspection: %v", err)
+	}
+	if len(result.Results) != 2 {
+		t.Fatalf("results = %#v, want Codex and xAI", result.Results)
+	}
+	providers := map[string]int{}
+	for _, item := range result.Results {
+		providers[item.Provider]++
+	}
+	if providers[model.CodexInspectionTargetCodex] != 1 || providers[model.CodexInspectionTargetXAI] != 1 {
+		t.Fatalf("providers = %#v", providers)
+	}
+	mu.Lock()
+	requestCount := len(requestedURLs)
+	mu.Unlock()
+	if requestCount != 3 {
+		t.Fatalf("api-call requests = %d, want one Codex and two xAI billing requests", requestCount)
 	}
 }
 
@@ -205,7 +269,8 @@ func TestRunXAIFailedBillingNeverReportsHealthyAndRetriesTransientFailures(t *te
 
 			db := newCodexInspectionTestStore(t)
 			managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-			managerCfg.CodexInspection.TargetType = "xai"
+			managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+			managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 			managerCfg.CodexInspection.Retries = 1
 			if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 				t.Fatalf("save manager config: %v", err)
@@ -307,7 +372,8 @@ func TestExecuteManualActionsAllowsXAIReauthDeleteOverride(t *testing.T) {
 
 	db := newCodexInspectionTestStore(t)
 	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-	managerCfg.CodexInspection.TargetType = "xai"
+	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 	managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 		t.Fatalf("save manager config: %v", err)
@@ -729,7 +795,8 @@ func TestRunWithDifferentTargetTypePreservesDisableOwnership(t *testing.T) {
 
 	db := newCodexInspectionTestStore(t)
 	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-	managerCfg.CodexInspection.TargetType = "anthropic"
+	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 		t.Fatalf("save manager config: %v", err)
 	}

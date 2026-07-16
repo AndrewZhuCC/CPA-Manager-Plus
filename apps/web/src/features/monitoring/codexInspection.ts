@@ -63,6 +63,7 @@ export type CodexInspectionExecutionAction = Extract<
 >;
 export type CodexInspectionProgressStatus = 'idle' | 'running' | 'paused' | 'stopped' | 'completed';
 export type CodexInspectionAutoActionMode = 'none' | 'enable' | 'disable' | 'delete';
+export type CodexInspectionTargetType = 'codex' | 'xai';
 export type CodexInspectionStoredActionFilter =
   | 'all'
   | 'delete'
@@ -74,6 +75,7 @@ export type CodexInspectionStoredActionFilter =
 export interface CodexInspectionSettings {
   baseUrl: string;
   token: string;
+  targetTypes: CodexInspectionTargetType[];
   targetType: string;
   workers: number;
   deleteWorkers: number;
@@ -85,6 +87,7 @@ export interface CodexInspectionSettings {
 }
 
 export interface CodexInspectionConfigurableSettings {
+  targetTypes: CodexInspectionTargetType[];
   targetType: string;
   workers: number;
   deleteWorkers: number;
@@ -302,6 +305,14 @@ const pickSample = <T>(items: T[], sampleSize: number): T[] => {
   return shuffled.slice(0, sampleSize);
 };
 
+export const filterInspectionAccountsByTargetTypes = <T extends { provider: string }>(
+  items: T[],
+  targetTypes: readonly CodexInspectionTargetType[]
+): T[] => {
+  const selectedTargetTypes = new Set<string>(targetTypes);
+  return items.filter((item) => selectedTargetTypes.has(item.provider));
+};
+
 export const resolveCodexInspectionSettings = (
   config: Config | null,
   apiBase: string,
@@ -317,6 +328,7 @@ export const resolveCodexInspectionSettings = (
   return {
     baseUrl: readString(apiBase) || readString(clean?.baseUrl),
     token: readString(managementKey) || readString(clean?.token),
+    targetTypes: configurable.targetTypes,
     targetType: configurable.targetType,
     workers: configurable.workers,
     deleteWorkers: configurable.deleteWorkers,
@@ -487,7 +499,7 @@ export const createCodexInspectionSession = ({
   };
 
   const initialize = async () => {
-    onLog?.('info', `加载认证文件列表，目标类型：${resolvedSettings.targetType}`);
+    onLog?.('info', `加载认证文件列表，巡检目标：${resolvedSettings.targetTypes.join(' + ')}`);
 
     const authFilesResponse = await authFilesApi.list();
     files = Array.isArray(authFilesResponse.files) ? authFilesResponse.files : [];
@@ -500,12 +512,12 @@ export const createCodexInspectionSession = ({
       connectionFingerprint ?? '',
       files
     );
-    probeSet = accounts
-      .filter((item) => item.provider === resolvedSettings.targetType)
-      .map((item) => ({
+    probeSet = filterInspectionAccountsByTargetTypes(accounts, resolvedSettings.targetTypes).map(
+      (item) => ({
         ...item,
         autoRecoverOwned: ownedDisableFileNames.has(item.fileName),
-      }));
+      })
+    );
     sampledAccounts =
       resolvedSettings.sampleSize > 0
         ? pickSample(probeSet, Math.min(resolvedSettings.sampleSize, probeSet.length))

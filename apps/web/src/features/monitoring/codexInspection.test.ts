@@ -6,6 +6,7 @@ import {
   CODEX_INSPECTION_SETTINGS_STORAGE_KEY,
   createCodexInspectionConnectionFingerprint,
   executeCodexInspectionActions,
+  filterInspectionAccountsByTargetTypes,
   hydrateCodexInspectionLastRun,
   isReauthAction,
   loadCodexInspectionConfigurableSettings,
@@ -94,6 +95,7 @@ const createRunResult = (): CodexInspectionRunResult => {
     settings: {
       baseUrl: 'https://secret.example.test',
       token: 'management-secret-token',
+      targetTypes: ['codex'],
       targetType: 'codex',
       workers: 2,
       deleteWorkers: 1,
@@ -148,6 +150,39 @@ describe('Codex inspection settings', () => {
     expect(loadCodexInspectionConfigurableSettings(null).autoActionMode).toBe('disable');
   });
 
+  it('migrates a legacy single target and preserves a multi-target selection', () => {
+    const storage = createStorage();
+    vi.stubGlobal('localStorage', storage);
+    storage.setItem(CODEX_INSPECTION_SETTINGS_STORAGE_KEY, JSON.stringify({ targetType: 'xai' }));
+
+    expect(loadCodexInspectionConfigurableSettings(null)).toMatchObject({
+      targetTypes: ['xai'],
+      targetType: 'xai',
+    });
+
+    storage.setItem(
+      CODEX_INSPECTION_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ targetTypes: ['xai', 'codex'], targetType: 'xai' })
+    );
+    expect(loadCodexInspectionConfigurableSettings(null)).toMatchObject({
+      targetTypes: ['codex', 'xai'],
+      targetType: 'codex',
+    });
+  });
+
+  it('filters local inspection accounts by every selected provider', () => {
+    const accounts = [
+      { provider: 'codex', id: 'codex-account' },
+      { provider: 'xai', id: 'xai-account' },
+      { provider: 'gemini', id: 'other-account' },
+    ];
+
+    expect(filterInspectionAccountsByTargetTypes(accounts, ['codex', 'xai'])).toEqual([
+      accounts[0],
+      accounts[1],
+    ]);
+  });
+
   it('validates shared config drafts before saving', () => {
     const t = ((key: string, values?: Record<string, unknown>) => {
       if (key === 'monitoring.codex_inspection_settings_invalid_integer') {
@@ -161,7 +196,7 @@ describe('Codex inspection settings', () => {
 
     const invalid = validateInspectionConfigDraft(
       {
-        targetType: ' ',
+        targetTypes: [],
         workers: '0',
         deleteWorkers: '2',
         timeout: '15000',
@@ -176,7 +211,7 @@ describe('Codex inspection settings', () => {
     );
 
     expect(invalid.ok).toBe(false);
-    expect(invalid.errors.targetType).toBe(
+    expect(invalid.errors.targetTypes).toBe(
       'monitoring.codex_inspection_settings_target_type_required'
     );
     expect(invalid.errors.workers).toContain('>= 1');
@@ -186,7 +221,7 @@ describe('Codex inspection settings', () => {
 
     const valid = validateInspectionConfigDraft(
       {
-        targetType: ' Codex ',
+        targetTypes: ['codex', 'xai'],
         workers: '3',
         deleteWorkers: '2',
         timeout: '15000',
@@ -202,7 +237,8 @@ describe('Codex inspection settings', () => {
 
     expect(valid.ok).toBe(true);
     expect(valid.values).toEqual({
-      targetType: 'Codex',
+      targetTypes: ['codex', 'xai'],
+      targetType: 'codex',
       workers: 3,
       deleteWorkers: 2,
       timeout: 15000,
@@ -225,6 +261,8 @@ describe('Codex inspection settings', () => {
       'monitoring.codex_inspection_workers': 'Workers',
       'monitoring.codex_inspection_settings_timeout_label': 'Timeout',
       'monitoring.codex_inspection_target_type': 'Target',
+      'monitoring.codex_inspection_target_codex': 'Codex',
+      'monitoring.codex_inspection_target_xai': 'xAI billing',
       'monitoring.server_codex_inspection_sample_all': 'All',
       'monitoring.server_codex_inspection_config_summary_schedule': 'Schedule',
       'monitoring.server_codex_inspection_config_summary_trigger': 'Trigger',
@@ -238,7 +276,7 @@ describe('Codex inspection settings', () => {
     };
     const t = ((key: string) => labels[key] ?? key) as never;
     const settings = {
-      targetType: 'codex',
+      targetTypes: ['codex', 'xai'] as Array<'codex' | 'xai'>,
       workers: 4,
       timeout: 15000,
       usedPercentThreshold: 100,
@@ -253,7 +291,7 @@ describe('Codex inspection settings', () => {
       { key: 'auto', value: 'Auto delete', tone: 'bad', field: 'autoActionMode' },
       { key: 'recover', value: 'Disabled', tone: 'idle', field: 'autoActionMode' },
       { key: 'concurrency', value: '4', hint: 'Timeout: 15000', field: 'workers' },
-      { key: 'target', value: 'codex', field: 'targetType' },
+      { key: 'target', value: 'Codex + xAI billing', field: 'targetTypes' },
     ]);
 
     expect(
@@ -266,6 +304,7 @@ describe('Codex inspection settings', () => {
     ).toMatchObject([
       { key: 'schedule', value: 'Enabled', tone: 'good', field: 'schedule' },
       { key: 'trigger', value: 'Every 60 minutes', field: 'schedule' },
+      { key: 'target', value: 'Codex + xAI billing', field: 'targetTypes' },
       { key: 'threshold', value: '100%', field: 'usedPercentThreshold' },
       { key: 'sample', value: 'All', field: 'sampleSize' },
       { key: 'auto', value: 'Auto delete', tone: 'bad', field: 'autoActionMode' },

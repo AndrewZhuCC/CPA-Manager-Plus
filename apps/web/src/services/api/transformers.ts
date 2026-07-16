@@ -418,6 +418,9 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
     config.clean = {
       baseUrl: normalizeString(clean['base_url'] ?? clean.baseUrl ?? clean['base-url']),
       token: normalizeString(clean.token),
+      targetTypes: normalizeExcludedModels(
+        clean['target_types'] ?? clean.targetTypes ?? clean['target-types']
+      ),
       targetType: normalizeString(clean['target_type'] ?? clean.targetType ?? clean['target-type']),
       workers: normalizeNumber(clean.workers),
       deleteWorkers: normalizeNumber(

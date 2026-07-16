@@ -4,6 +4,7 @@ import type {
   CodexInspectionConfigurableSettings,
   CodexInspectionLogLevel,
   CodexInspectionStoredActionFilter,
+  CodexInspectionTargetType,
 } from '@/features/monitoring/codexInspection';
 import type { Config } from '@/types';
 import { normalizeNumberValue } from '@/utils/quota';
@@ -17,7 +18,10 @@ export const CODEX_INSPECTION_AUTO_ACTION_MODES: readonly CodexInspectionAutoAct
   'delete',
 ];
 
+export const CODEX_INSPECTION_TARGET_TYPES: readonly CodexInspectionTargetType[] = ['codex', 'xai'];
+
 export const DEFAULT_CODEX_INSPECTION_SETTINGS: CodexInspectionConfigurableSettings = {
+  targetTypes: ['codex'],
   targetType: 'codex',
   workers: 4,
   deleteWorkers: 4,
@@ -79,6 +83,31 @@ export const readNonNegativeInteger = (value: unknown, fallback: number) => {
   return Math.floor(normalized);
 };
 
+export const readInspectionTargetTypes = (value: unknown): CodexInspectionTargetType[] => {
+  if (!Array.isArray(value)) return [];
+  const selected = new Set(
+    value.map((item) => readString(item).toLowerCase()).filter((item) => item.length > 0)
+  );
+  return CODEX_INSPECTION_TARGET_TYPES.filter((item) => selected.has(item));
+};
+
+export const normalizeInspectionTargetTypes = (
+  value: unknown,
+  legacyValue?: unknown,
+  fallback: readonly CodexInspectionTargetType[] = DEFAULT_CODEX_INSPECTION_SETTINGS.targetTypes
+): CodexInspectionTargetType[] => {
+  const direct = readInspectionTargetTypes(value);
+  if (direct.length > 0) return direct;
+
+  const legacy = readString(legacyValue).toLowerCase();
+  if (CODEX_INSPECTION_TARGET_TYPES.includes(legacy as CodexInspectionTargetType)) {
+    return [legacy as CodexInspectionTargetType];
+  }
+
+  const normalizedFallback = readInspectionTargetTypes(fallback);
+  return normalizedFallback.length > 0 ? normalizedFallback : ['codex'];
+};
+
 const isAutoActionMode = (value: string): value is CodexInspectionAutoActionMode =>
   CODEX_INSPECTION_AUTO_ACTION_MODES.includes(value as CodexInspectionAutoActionMode);
 
@@ -130,6 +159,9 @@ export const readConfigurableSettingsFromConfig = (
   const clean = config?.clean ?? null;
   const cleanRecord = isRecord(clean) ? clean : {};
   return {
+    targetTypes: Array.isArray(cleanRecord.targetTypes)
+      ? readInspectionTargetTypes(cleanRecord.targetTypes)
+      : undefined,
     targetType: readString(clean?.targetType),
     workers: normalizeNumberValue(clean?.workers) ?? undefined,
     deleteWorkers: normalizeNumberValue(clean?.deleteWorkers) ?? undefined,
@@ -147,6 +179,7 @@ export const readConfigurableSettingsFromConfig = (
 };
 
 type CodexInspectionConfigurableSettingsInput = {
+  targetTypes?: unknown;
   targetType?: unknown;
   workers?: unknown;
   deleteWorkers?: unknown;
@@ -163,6 +196,11 @@ type CodexInspectionConfigurableSettingsInput = {
 export const normalizeConfigurableSettings = (
   input?: CodexInspectionConfigurableSettingsInput | null
 ): CodexInspectionConfigurableSettings => {
+  const targetTypes = normalizeInspectionTargetTypes(
+    input?.targetTypes,
+    input?.targetType,
+    DEFAULT_CODEX_INSPECTION_SETTINGS.targetTypes
+  );
   const merged = {
     ...DEFAULT_CODEX_INSPECTION_SETTINGS,
     ...(input ?? {}),
@@ -173,8 +211,8 @@ export const normalizeConfigurableSettings = (
   const sampleSizeValue = normalizeNumberValue(merged.sampleSize);
 
   return {
-    targetType:
-      readString(merged.targetType).toLowerCase() || DEFAULT_CODEX_INSPECTION_SETTINGS.targetType,
+    targetTypes,
+    targetType: targetTypes[0],
     workers: clampPositiveInteger(
       normalizeNumberValue(merged.workers) ?? undefined,
       DEFAULT_CODEX_INSPECTION_SETTINGS.workers
@@ -224,9 +262,16 @@ export const loadCodexInspectionConfigurableSettings = (
     if (!isRecord(parsed)) {
       return normalizeConfigurableSettings(configSettings);
     }
+    const parsedHasTargetTypes = Object.prototype.hasOwnProperty.call(parsed, 'targetTypes');
+    const parsedHasLegacyTargetType = Object.prototype.hasOwnProperty.call(parsed, 'targetType');
     return normalizeConfigurableSettings({
       ...configSettings,
       ...parsed,
+      targetTypes: parsedHasTargetTypes
+        ? parsed.targetTypes
+        : parsedHasLegacyTargetType
+          ? undefined
+          : configSettings.targetTypes,
     });
   } catch {
     return normalizeConfigurableSettings(configSettings);

@@ -176,6 +176,7 @@ export interface ManagerCodexInspectionScheduleConfig {
 export interface ManagerCodexInspectionConfig {
   enabled?: boolean;
   schedule?: ManagerCodexInspectionScheduleConfig;
+  targetTypes?: string[];
   targetType?: string;
   workers?: number;
   deleteWorkers?: number;

@@ -49,3 +49,5 @@ TODO.md
 
 # Local temp scratch files
 .tmp-*
+.narrafork/
+.worktrees/

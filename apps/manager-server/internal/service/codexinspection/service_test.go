@@ -291,7 +291,8 @@ func TestRunXAIFallsBackToOfficialAPIIdentityHealth(t *testing.T) {
 
 	db := newCodexInspectionTestStore(t)
 	managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-	managerCfg.CodexInspection.TargetType = "xai"
+	managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+	managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 	managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 	if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 		t.Fatalf("save manager config: %v", err)
@@ -352,7 +353,8 @@ func TestRunXAIDoesNotFallbackToOfficialAPIForExplicitBillingDenials(t *testing.
 
 			db := newCodexInspectionTestStore(t)
 			managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-			managerCfg.CodexInspection.TargetType = "xai"
+			managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+			managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 			managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 			if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 				t.Fatalf("save manager config: %v", err)
@@ -415,7 +417,8 @@ func TestRunXAIRejectsInvalidOfficialAPIIdentityPayload(t *testing.T) {
 
 			db := newCodexInspectionTestStore(t)
 			managerCfg := newCodexInspectionManagerConfig(upstream.URL)
-			managerCfg.CodexInspection.TargetType = "xai"
+			managerCfg.CodexInspection.TargetTypes = []string{model.CodexInspectionTargetXAI}
+			managerCfg.CodexInspection.TargetType = model.CodexInspectionTargetXAI
 			managerCfg.CodexInspection.AutoActionMode = model.CodexInspectionAutoActionNone
 			if err := db.SaveManagerConfig(context.Background(), managerCfg); err != nil {
 				t.Fatalf("save manager config: %v", err)

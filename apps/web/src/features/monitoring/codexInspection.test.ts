@@ -410,6 +410,7 @@ describe('Codex inspection settings', () => {
         ? `Error kind: ${values?.kind}`
         : key) as never;
     const base = {
+      provider: 'xai',
       action: 'keep' as const,
       statusCode: 200,
       error: '',
@@ -419,9 +420,10 @@ describe('Codex inspection settings', () => {
     expect(summarizeInspectionError({ ...base, errorKind: 'billing_healthy' }, t)).toBe('');
     expect(summarizeInspectionError({ ...base, errorKind: 'inference_healthy' }, t)).toBe('');
     expect(summarizeInspectionError({ ...base, errorKind: 'billing_partial' }, t)).toBe('');
-    expect(summarizeInspectionError({ ...base, errorKind: 'upstream_error' }, t)).toBe(
-      'Error kind: upstream_error'
-    );
+    // non-xAI provider so formatXaiProbeIssue does not rewrite the kind-based fallback
+    expect(
+      summarizeInspectionError({ ...base, provider: 'codex', errorKind: 'upstream_error' }, t)
+    ).toBe('Error kind: upstream_error');
   });
 });
 

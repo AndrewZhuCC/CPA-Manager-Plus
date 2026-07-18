@@ -6,6 +6,21 @@ const UNKNOWN_AUTH_INDEX_KEY = '-';
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 18_000;
 const CODEX_WEEKLY_WINDOW_SECONDS = 604_800;
 
+/** Mid-window welfare / reset-credit refill: usedPercent drop that invalidates estimates. */
+export const AUTH_FILE_USAGE_USED_PERCENT_DROP_BLOCK_THRESHOLD = 15;
+/** Treat resetAt advances beyond this as a new calendar epoch (clear block). */
+export const AUTH_FILE_USAGE_RESET_AT_EPOCH_ADVANCE_MS = 60_000;
+
+export type AuthFileUsageWindowKind = 'fiveHour' | 'weekly';
+
+/** Per credential+window observation for mid-window usedPercent drop detection. */
+export type AuthFileUsageWindowObservation = {
+  usedPercent: number;
+  resetAtMs: number;
+  sampledAtMs: number;
+  blocked: boolean;
+};
+
 export type AuthFileUsageSummary = {
   estimatedCost: number;
   totalTokens: number;
@@ -29,13 +44,17 @@ export type AuthFileUsageSummaryInput = {
   weeklyRows: MonitoringAnalyticsCredentialStatRow[];
   codexQuota?: CodexQuotaState;
   nowMs?: number;
+  /** When true for a window kind, skip limit/remaining estimates (mid-window refill). */
+  estimateBlockedByKind?: Partial<Record<AuthFileUsageWindowKind, boolean>>;
 };
 
-export type AuthFileUsageSummaryMapInput = Omit<AuthFileUsageSummaryInput, 'codexQuota'> & {
+export type AuthFileUsageSummaryMapInput = Omit<
+  AuthFileUsageSummaryInput,
+  'codexQuota' | 'estimateBlockedByKind'
+> & {
   codexQuotaByKey: Map<string, CodexQuotaState | undefined>;
+  usageObservations?: ReadonlyMap<string, AuthFileUsageWindowObservation>;
 };
-
-export type AuthFileUsageWindowKind = 'fiveHour' | 'weekly';
 
 export type AuthFileUsageWindowTarget = {
   key: string;
@@ -45,6 +64,17 @@ export type AuthFileUsageWindowTarget = {
   fromMs: number;
   toMs: number;
 };
+
+export const getAuthFileUsageObservationKey = (
+  usageKey: string,
+  kind: AuthFileUsageWindowKind
+): string => `${usageKey}:${kind}`;
+
+export const isAuthFileUsageEstimateBlocked = (
+  observations: ReadonlyMap<string, AuthFileUsageWindowObservation> | undefined,
+  usageKey: string,
+  kind: AuthFileUsageWindowKind
+): boolean => observations?.get(getAuthFileUsageObservationKey(usageKey, kind))?.blocked === true;
 
 export const getAuthFileUsageWindowTargetsSignature = (
   targets: AuthFileUsageWindowTarget[]
@@ -164,8 +194,10 @@ const buildAuthFileUsageWindowTarget = (
   file: AuthFileItem,
   quota: CodexQuotaState | undefined,
   kind: AuthFileUsageWindowKind,
-  nowMs: number
+  nowMs: number,
+  estimateBlocked = false
 ): AuthFileUsageWindowTarget | null => {
+  if (estimateBlocked) return null;
   const window =
     kind === 'fiveHour' ? findCodexFiveHourWindow(quota) : findCodexWeeklyWindow(quota);
   const limitWindowSeconds = normalizeWindowSeconds(window?.limitWindowSeconds);
@@ -186,10 +218,69 @@ const buildAuthFileUsageWindowTarget = (
   };
 };
 
+/**
+ * Advances per-window usedPercent observations and marks mid-window welfare/reset-credit
+ * refills as blocked until the calendar reset epoch advances.
+ */
+export const advanceAuthFileUsageObservations = (
+  previous: ReadonlyMap<string, AuthFileUsageWindowObservation>,
+  files: AuthFileItem[],
+  codexQuotaByKey: Map<string, CodexQuotaState | undefined>,
+  options: {
+    nowMs?: number;
+    dropThreshold?: number;
+    resetAtEpochAdvanceMs?: number;
+  } = {}
+): Map<string, AuthFileUsageWindowObservation> => {
+  const nowMs = options.nowMs ?? Date.now();
+  const dropThreshold =
+    options.dropThreshold ?? AUTH_FILE_USAGE_USED_PERCENT_DROP_BLOCK_THRESHOLD;
+  const resetAtEpochAdvanceMs =
+    options.resetAtEpochAdvanceMs ?? AUTH_FILE_USAGE_RESET_AT_EPOCH_ADVANCE_MS;
+  const next = new Map<string, AuthFileUsageWindowObservation>();
+
+  files.forEach((file) => {
+    const usageKey = getAuthFileUsageSummaryKey(file);
+    const quota = codexQuotaByKey.get(usageKey);
+    (['fiveHour', 'weekly'] as const).forEach((kind) => {
+      const window =
+        kind === 'fiveHour' ? findCodexFiveHourWindow(quota) : findCodexWeeklyWindow(quota);
+      const usedPercent = normalizePositiveFiniteNumber(window?.usedPercent);
+      const resetAtMs = normalizePositiveFiniteNumber(window?.resetAtMs);
+      const sampledAtMs = getCodexQuotaSampleAtMs(quota, window);
+      if (usedPercent === null || resetAtMs === null || sampledAtMs === null) return;
+
+      const observationKey = getAuthFileUsageObservationKey(usageKey, kind);
+      const prev = previous.get(observationKey);
+      let blocked = false;
+
+      if (prev) {
+        const resetAdvanced = resetAtMs >= prev.resetAtMs + resetAtEpochAdvanceMs;
+        if (resetAdvanced) {
+          blocked = false;
+        } else {
+          const drop = prev.usedPercent - usedPercent;
+          blocked = prev.blocked || drop >= dropThreshold;
+        }
+      }
+
+      next.set(observationKey, {
+        usedPercent,
+        resetAtMs,
+        sampledAtMs: Number.isFinite(nowMs) ? Math.min(sampledAtMs, nowMs) || sampledAtMs : sampledAtMs,
+        blocked,
+      });
+    });
+  });
+
+  return next;
+};
+
 export const buildAuthFileUsageWindowTargets = (
   files: AuthFileItem[],
   codexQuotaByKey: Map<string, CodexQuotaState | undefined>,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  usageObservations?: ReadonlyMap<string, AuthFileUsageWindowObservation>
 ): AuthFileUsageWindowTarget[] => {
   const targets = new Map<string, AuthFileUsageWindowTarget>();
 
@@ -197,7 +288,13 @@ export const buildAuthFileUsageWindowTargets = (
     const key = getAuthFileUsageSummaryKey(file);
     const quota = codexQuotaByKey.get(key);
     (['fiveHour', 'weekly'] as const).forEach((kind) => {
-      const target = buildAuthFileUsageWindowTarget(file, quota, kind, nowMs);
+      const target = buildAuthFileUsageWindowTarget(
+        file,
+        quota,
+        kind,
+        nowMs,
+        isAuthFileUsageEstimateBlocked(usageObservations, key, kind)
+      );
       if (target) targets.set(`${key}:${kind}`, target);
     });
   });
@@ -276,14 +373,18 @@ export const buildAuthFileUsageSummary = (
       weeklyWindowSeconds,
       nowMs
     );
+  const fiveHourEstimateAllowed =
+    usableFiveHourWindow && input.estimateBlockedByKind?.fiveHour !== true;
+  const weeklyEstimateAllowed =
+    usableWeeklyWindow && input.estimateBlockedByKind?.weekly !== true;
   const fiveHourLimitTokens = estimateTokenLimit(
     fiveHour.totalTokens,
-    usableFiveHourWindow ? fiveHourQuotaWindow.usedPercent : null
+    fiveHourEstimateAllowed ? fiveHourQuotaWindow.usedPercent : null
   );
   const fiveHourLimitCost = estimateCostLimit(
     fiveHour.estimatedCost,
     fiveHour.totalTokens,
-    usableFiveHourWindow ? fiveHourQuotaWindow.usedPercent : null
+    fiveHourEstimateAllowed ? fiveHourQuotaWindow.usedPercent : null
   );
   const fiveHourRemainingTokens = estimateRemainingTokens(
     fiveHourLimitTokens,
@@ -295,12 +396,12 @@ export const buildAuthFileUsageSummary = (
   );
   const weeklyLimitTokens = estimateTokenLimit(
     weekly.totalTokens,
-    usableWeeklyWindow ? weeklyQuotaWindow.usedPercent : null
+    weeklyEstimateAllowed ? weeklyQuotaWindow.usedPercent : null
   );
   const weeklyLimitCost = estimateCostLimit(
     weekly.estimatedCost,
     weekly.totalTokens,
-    usableWeeklyWindow ? weeklyQuotaWindow.usedPercent : null
+    weeklyEstimateAllowed ? weeklyQuotaWindow.usedPercent : null
   );
   const weeklyRemainingTokens = estimateRemainingTokens(weeklyLimitTokens, weekly.totalTokens);
   const weeklyRemainingCost = estimateRemainingCost(weeklyLimitCost, weekly.estimatedCost);
@@ -353,6 +454,10 @@ export const buildAuthFileUsageSummaryMap = (
       weeklyRows: input.weeklyRows,
       codexQuota: input.codexQuotaByKey.get(key),
       nowMs: input.nowMs,
+      estimateBlockedByKind: {
+        fiveHour: isAuthFileUsageEstimateBlocked(input.usageObservations, key, 'fiveHour'),
+        weekly: isAuthFileUsageEstimateBlocked(input.usageObservations, key, 'weekly'),
+      },
     });
     if (summary) summaries.set(key, summary);
   });

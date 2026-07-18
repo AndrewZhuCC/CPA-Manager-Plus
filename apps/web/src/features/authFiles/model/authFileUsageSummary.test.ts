@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { AuthFileItem, CodexQuotaState } from '@/types';
 import type { MonitoringAnalyticsCredentialStatRow } from '@/services/api/usageService';
 import {
+  advanceAuthFileUsageObservations,
   buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummary,
   buildAuthFileUsageSummaryMap,
+  getAuthFileUsageObservationKey,
   getAuthFileUsageSummaryKey,
 } from './authFileUsageSummary';
 
@@ -468,5 +470,273 @@ describe('auth file usage summary model', () => {
 
     expect(map.get(getAuthFileUsageSummaryKey(files[0]))?.totalTokens).toBe(1_000);
     expect(map.get(getAuthFileUsageSummaryKey(files[1]))?.totalTokens).toBe(2_000);
+  });
+
+  it('blocks estimates after a mid-window usedPercent drop (welfare / reset credit)', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const highQuota = codexQuota({
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 80,
+          resetLabel: 'soon',
+          limitWindowSeconds: 18_000,
+          resetAtMs: FIVE_HOUR_RESET_AT_MS,
+        },
+      ],
+    });
+    const refilledQuota = codexQuota({
+      windows: [
+        {
+          id: 'five-hour',
+          label: '5-hour limit',
+          usedPercent: 8,
+          resetLabel: 'soon',
+          limitWindowSeconds: 18_000,
+          resetAtMs: FIVE_HOUR_RESET_AT_MS,
+        },
+      ],
+    });
+
+    const afterHigh = advanceAuthFileUsageObservations(
+      new Map(),
+      [file],
+      new Map([[key, highQuota]]),
+      { nowMs: QUOTA_SAMPLE_AT_MS }
+    );
+    expect(afterHigh.get(getAuthFileUsageObservationKey(key, 'fiveHour'))?.blocked).toBe(false);
+
+    const afterDrop = advanceAuthFileUsageObservations(
+      afterHigh,
+      [file],
+      new Map([[key, refilledQuota]]),
+      { nowMs: QUOTA_SAMPLE_AT_MS }
+    );
+    expect(afterDrop.get(getAuthFileUsageObservationKey(key, 'fiveHour'))?.blocked).toBe(true);
+
+    expect(
+      buildAuthFileUsageWindowTargets(
+        [file],
+        new Map([[key, refilledQuota]]),
+        QUOTA_SAMPLE_AT_MS,
+        afterDrop
+      )
+    ).toEqual([]);
+
+    const summary = buildAuthFileUsageSummary(file, {
+      retainedRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 50_000,
+          cost: 2,
+        }),
+      ],
+      fiveHourRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 1_000_000,
+          cost: 10,
+        }),
+      ],
+      weeklyRows: [],
+      codexQuota: refilledQuota,
+      nowMs: QUOTA_SAMPLE_AT_MS,
+      estimateBlockedByKind: { fiveHour: true },
+    });
+
+    // Without guard this would invent a 12.5M token limit from 1M / 8%.
+    expect(summary?.totalTokens).toBe(50_000);
+    expect(summary?.codexFiveHourLimitTokens).toBeNull();
+    expect(summary?.codexFiveHourRemainingTokens).toBeNull();
+    expect(summary?.codexFiveHourLimitCost).toBeNull();
+
+    const map = buildAuthFileUsageSummaryMap([file], {
+      retainedRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 50_000,
+          cost: 2,
+        }),
+      ],
+      fiveHourRows: [
+        credentialRow({
+          auth_file_snapshot: file.name,
+          auth_index: '0',
+          total_tokens: 1_000_000,
+          cost: 10,
+        }),
+      ],
+      weeklyRows: [],
+      codexQuotaByKey: new Map([[key, refilledQuota]]),
+      usageObservations: afterDrop,
+      nowMs: QUOTA_SAMPLE_AT_MS,
+    });
+    expect(map.get(key)?.codexFiveHourLimitTokens).toBeNull();
+  });
+
+  it('clears the mid-window block when resetAt advances to a new epoch', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const blockedObs = advanceAuthFileUsageObservations(
+      advanceAuthFileUsageObservations(
+        new Map(),
+        [file],
+        new Map([
+          [
+            key,
+            codexQuota({
+              windows: [
+                {
+                  id: 'five-hour',
+                  label: '5-hour limit',
+                  usedPercent: 80,
+                  resetLabel: 'soon',
+                  limitWindowSeconds: 18_000,
+                  resetAtMs: FIVE_HOUR_RESET_AT_MS,
+                },
+              ],
+            }),
+          ],
+        ]),
+        { nowMs: QUOTA_SAMPLE_AT_MS }
+      ),
+      [file],
+      new Map([
+        [
+          key,
+          codexQuota({
+            windows: [
+              {
+                id: 'five-hour',
+                label: '5-hour limit',
+                usedPercent: 5,
+                resetLabel: 'soon',
+                limitWindowSeconds: 18_000,
+                resetAtMs: FIVE_HOUR_RESET_AT_MS,
+              },
+            ],
+          }),
+        ],
+      ]),
+      { nowMs: QUOTA_SAMPLE_AT_MS }
+    );
+    expect(blockedObs.get(getAuthFileUsageObservationKey(key, 'fiveHour'))?.blocked).toBe(true);
+
+    const nextResetAtMs = FIVE_HOUR_RESET_AT_MS + 18_000 * 1000;
+    const nextSampleAtMs = FIVE_HOUR_RESET_AT_MS + 60 * 60 * 1000;
+    const cleared = advanceAuthFileUsageObservations(
+      blockedObs,
+      [file],
+      new Map([
+        [
+          key,
+          codexQuota({
+            fetchedAtMs: nextSampleAtMs,
+            windows: [
+              {
+                id: 'five-hour',
+                label: '5-hour limit',
+                usedPercent: 10,
+                resetLabel: 'later',
+                limitWindowSeconds: 18_000,
+                resetAtMs: nextResetAtMs,
+              },
+            ],
+          }),
+        ],
+      ]),
+      { nowMs: nextSampleAtMs }
+    );
+    expect(cleared.get(getAuthFileUsageObservationKey(key, 'fiveHour'))?.blocked).toBe(false);
+
+    expect(
+      buildAuthFileUsageWindowTargets(
+        [file],
+        new Map([
+          [
+            key,
+            codexQuota({
+              fetchedAtMs: nextSampleAtMs,
+              windows: [
+                {
+                  id: 'five-hour',
+                  label: '5-hour limit',
+                  usedPercent: 10,
+                  resetLabel: 'later',
+                  limitWindowSeconds: 18_000,
+                  resetAtMs: nextResetAtMs,
+                },
+              ],
+            }),
+          ],
+        ]),
+        nextSampleAtMs,
+        cleared
+      )
+    ).toEqual([
+      {
+        key,
+        kind: 'fiveHour',
+        authFileName: file.name,
+        authIndex: '0',
+        fromMs: nextResetAtMs - 18_000 * 1000,
+        toMs: nextSampleAtMs,
+      },
+    ]);
+  });
+
+  it('does not block gradual usedPercent decreases below the drop threshold', () => {
+    const file: AuthFileItem = { name: 'codex-main.json', type: 'codex', authIndex: '0' };
+    const key = getAuthFileUsageSummaryKey(file);
+    const first = advanceAuthFileUsageObservations(
+      new Map(),
+      [file],
+      new Map([
+        [
+          key,
+          codexQuota({
+            windows: [
+              {
+                id: 'five-hour',
+                label: '5-hour limit',
+                usedPercent: 40,
+                resetLabel: 'soon',
+                limitWindowSeconds: 18_000,
+                resetAtMs: FIVE_HOUR_RESET_AT_MS,
+              },
+            ],
+          }),
+        ],
+      ]),
+      { nowMs: QUOTA_SAMPLE_AT_MS }
+    );
+    const second = advanceAuthFileUsageObservations(
+      first,
+      [file],
+      new Map([
+        [
+          key,
+          codexQuota({
+            windows: [
+              {
+                id: 'five-hour',
+                label: '5-hour limit',
+                usedPercent: 30,
+                resetLabel: 'soon',
+                limitWindowSeconds: 18_000,
+                resetAtMs: FIVE_HOUR_RESET_AT_MS,
+              },
+            ],
+          }),
+        ],
+      ]),
+      { nowMs: QUOTA_SAMPLE_AT_MS }
+    );
+    expect(second.get(getAuthFileUsageObservationKey(key, 'fiveHour'))?.blocked).toBe(false);
   });
 });

@@ -116,10 +116,12 @@ import {
   type AuthFilesCodexStatusFilter,
 } from '@/features/authFiles/model/authFilesPageModel';
 import {
+  advanceAuthFileUsageObservations,
   buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummaryMap,
   getAuthFileUsageSummaryKey,
   getAuthFileUsageWindowTargetsSignature,
+  type AuthFileUsageWindowObservation,
   type AuthFileUsageWindowTarget,
 } from '@/features/authFiles/model/authFileUsageSummary';
 import {
@@ -306,6 +308,9 @@ export function AuthFilesPage() {
   const authFileRetainedUsageReqId = useRef(0);
   const authFileWindowUsageReqId = useRef(0);
   const authFileWindowUsageSignatureRef = useRef('');
+  const authFileUsageObservationsRef = useRef<Map<string, AuthFileUsageWindowObservation>>(
+    new Map()
+  );
   // Tracks the context identity so the layout effect can detect cross-context
   // transitions synchronously (before passive effects fire) and invalidate any
   // in-flight request that belongs to the old context.
@@ -1284,9 +1289,25 @@ export function AuthFilesPage() {
     return quotaMap;
   }, [files, getDisplayCodexQuota]);
 
+  const authFileUsageObservations = useMemo(() => {
+    const next = advanceAuthFileUsageObservations(
+      authFileUsageObservationsRef.current,
+      files,
+      codexDisplayQuotaByAuthFileUsageKey
+    );
+    authFileUsageObservationsRef.current = next;
+    return next;
+  }, [codexDisplayQuotaByAuthFileUsageKey, files]);
+
   const authFileUsageWindowTargets = useMemo(
-    () => buildAuthFileUsageWindowTargets(files, codexDisplayQuotaByAuthFileUsageKey),
-    [codexDisplayQuotaByAuthFileUsageKey, files]
+    () =>
+      buildAuthFileUsageWindowTargets(
+        files,
+        codexDisplayQuotaByAuthFileUsageKey,
+        Date.now(),
+        authFileUsageObservations
+      ),
+    [authFileUsageObservations, codexDisplayQuotaByAuthFileUsageKey, files]
   );
   const authFileUsageWindowTargetsSignature = useMemo(
     () => getAuthFileUsageWindowTargetsSignature(authFileUsageWindowTargets),
@@ -1330,8 +1351,10 @@ export function AuthFilesPage() {
             ? authFileUsageRows.weekly
             : [],
         codexQuotaByKey: codexDisplayQuotaByAuthFileUsageKey,
+        usageObservations: authFileUsageObservations,
       }),
     [
+      authFileUsageObservations,
       authFileUsageRows,
       authFileUsageWindowTargetsSignature,
       codexDisplayQuotaByAuthFileUsageKey,

@@ -38,10 +38,12 @@ import {
 } from '@/utils/usageHeaderSnapshots';
 import { useAuthFileUsageAnalytics } from '@/features/authFiles/hooks/useAuthFileUsageAnalytics';
 import {
+  advanceAuthFileUsageObservations,
   buildAuthFileUsageWindowTargets,
   buildAuthFileUsageSummaryMap,
   getAuthFileUsageSummaryKey,
   getAuthFileUsageWindowTargetsSignature,
+  type AuthFileUsageWindowObservation,
 } from '@/features/authFiles/model/authFileUsageSummary';
 import { CodexQuotaAggregateSummary } from './CodexQuotaAggregateSummary';
 import { buildCodexQuotaAggregateSummary } from './codexQuotaAggregateModel';
@@ -74,6 +76,9 @@ export function QuotaPage() {
     includeRetained: false,
   });
   const codexUsageWindowSignatureRef = useRef('');
+  const codexUsageObservationsRef = useRef<Map<string, AuthFileUsageWindowObservation>>(
+    new Map()
+  );
   const initialUiState = useRef(readQuotaPageUiState());
 
   const [files, setFiles] = useState<AuthFileItem[]>([]);
@@ -180,9 +185,25 @@ export function QuotaPage() {
     return quotaMap;
   }, [codexFiles, codexQuota, headerSnapshotLookup, t]);
 
+  const codexUsageObservations = useMemo(() => {
+    const next = advanceAuthFileUsageObservations(
+      codexUsageObservationsRef.current,
+      codexFiles,
+      codexDisplayQuotaByUsageKey
+    );
+    codexUsageObservationsRef.current = next;
+    return next;
+  }, [codexDisplayQuotaByUsageKey, codexFiles]);
+
   const codexUsageWindowTargets = useMemo(
-    () => buildAuthFileUsageWindowTargets(codexFiles, codexDisplayQuotaByUsageKey),
-    [codexDisplayQuotaByUsageKey, codexFiles]
+    () =>
+      buildAuthFileUsageWindowTargets(
+        codexFiles,
+        codexDisplayQuotaByUsageKey,
+        Date.now(),
+        codexUsageObservations
+      ),
+    [codexDisplayQuotaByUsageKey, codexFiles, codexUsageObservations]
   );
   const codexUsageWindowTargetsSignature = useMemo(
     () => getAuthFileUsageWindowTargetsSignature(codexUsageWindowTargets),
@@ -220,10 +241,12 @@ export function QuotaPage() {
             ? codexUsageRows.weekly
             : [],
         codexQuotaByKey: codexDisplayQuotaByUsageKey,
+        usageObservations: codexUsageObservations,
       }),
     [
       codexDisplayQuotaByUsageKey,
       codexFiles,
+      codexUsageObservations,
       codexUsageRows,
       codexUsageWindowTargetsSignature,
     ]

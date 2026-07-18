@@ -6,6 +6,7 @@ import {
   resolveCodexChatgptAccountId,
   resolveCodexPlanType,
 } from '@/utils/quota';
+import { getXaiProbeIssueKey } from '@/utils/quota/xaiPresentation';
 import {
   getHeaderSnapshotErrorCode,
   getHeaderSnapshotErrorKind,
@@ -409,14 +410,15 @@ export const getFreshAuthFileCodexStatusSources = (
 ): AuthFileCodexStatusSources => ({
   inspection:
     inspection?.provider &&
-    normalizeProviderKey(inspection.provider) !== normalizeProviderKey(file.type ?? file.provider ?? '')
+    normalizeProviderKey(inspection.provider) !==
+      normalizeProviderKey(file.type ?? file.provider ?? '')
       ? undefined
       : shouldSuppressOlderCodexStatusSource(
-    file,
-    quota,
-    inspection?.inspectionAtMs,
-    headerSnapshot?.timestamp_ms
-  )
+            file,
+            quota,
+            inspection?.inspectionAtMs,
+            headerSnapshot?.timestamp_ms
+          )
         ? undefined
         : inspection,
   headerSnapshot: shouldSuppressOlderCodexStatusSource(
@@ -676,16 +678,18 @@ export const getAuthFileCodexStatus = (
     isXai &&
     inspectionErrorKind &&
     inspectionErrorKind !== 'billing_healthy' &&
+    inspectionErrorKind !== 'official_api_healthy' &&
     !needsReauth
   ) {
+    const issueTitleKey = getXaiProbeIssueKey(inspectionErrorKind);
     badges.push({
       kind: 'observed_error',
       tone: 'info',
       labelKey: 'auth_files.provider_inspection_badge_error',
       defaultLabel: 'Inspection warning',
-      titleKey: 'auth_files.provider_inspection_badge_error_title',
-      defaultTitle: `Latest xAI inspection reported ${inspectionErrorKind}.`,
-      labelParams: { provider: 'xAI', kind: inspectionErrorKind },
+      titleKey: issueTitleKey ?? 'auth_files.provider_inspection_badge_error_title',
+      defaultTitle: 'The latest xAI inspection found an issue. Review the inspection details.',
+      labelParams: issueTitleKey ? undefined : { provider: 'xAI' },
     });
   }
 

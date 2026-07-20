@@ -1,6 +1,6 @@
 # CPA / CPA Manager Plus 维护交接
 
-> 最后核对时间：2026-07-18（Asia/Shanghai）
+> 最后核对时间：2026-07-20（Asia/Shanghai）
 >
 > 本文面向后续接手本仓库、本机 Docker 和 VPS 部署的 agent。先读完再操作。所有版本信息都只是本文生成时的快照，升级前必须重新查询官方发布状态。
 
@@ -36,18 +36,36 @@ upstream: git@github.com:seakee/CPA-Manager-Plus.git
 本文生成时：
 
 ```text
-HEAD: 75bb4fe9 fix: fail-closed Codex limit estimates after mid-window usedPercent drops
-origin/codex-auth-file-usage-quota-estimates: 已与 HEAD 同步
-定制基线: 官方 v1.11.3（merge 409ef5f0）+ 多平台巡检/额度估算定制
+HEAD: 5cae612a Merge upstream/main into custom quota/inspection branch
+本地分支相对 origin: ahead（含 HANDOFF + merge upstream/main，可按需 push）
+定制基线: 官方 v1.11.3 + 多平台巡检/额度估算/fail-closed + 已 merge upstream/main（#410/#409/#413 等，尚无更新的正式 release tag）
 官方最新 Plus release: v1.11.3
+备份分支: backup/pre-upstream-main-20260720
 ```
+
+CPA 统一源码仓（本地定制）：
+
+```text
+/Users/zhuanzhi/Documents/projects/CLIProxyAPI
+branch: custom/v7.2.92-nomi-i2i-bridge
+base: official tag v7.2.92
+custom commit: 11fa2285 feat(openai): bridge chat/completions image models for Nomi i2i
+upstream: https://github.com/router-for-me/CLIProxyAPI.git
+origin:   git@github.com:AndrewZhuCC/CLIProxyAPI.git
+```
+
+说明：
+
+- 官方自 v7.2.86 起已内置 `POST /v1/alpha/search`（`codexAlphaSearch` + OAuth 限定），**不必**再叠旧的 `misc/cli-proxy-api-7.2.69-alpha-search-hotfix` 大补丁。
+- 本地仅额外维护 Nomi chat→images bridge。
+- 历史碎片 clone 保留在 `Documents/projects/misc/cli-proxy-api-*`，仅作补丁来源/归档，不再作为构建真源。
 
 官方链接：
 
 - Plus：https://github.com/seakee/CPA-Manager-Plus
 - Plus v1.11.3：https://github.com/seakee/CPA-Manager-Plus/releases/tag/v1.11.3
 - CPA：https://github.com/router-for-me/CLIProxyAPI
-- CPA v7.2.86：https://github.com/router-for-me/CLIProxyAPI/releases/tag/v7.2.86
+- CPA v7.2.92：https://github.com/router-for-me/CLIProxyAPI/releases/tag/v7.2.92
 
 ## 3. 当前 VPS 部署快照
 
@@ -68,16 +86,19 @@ ssh vps
 
 | Compose 服务 | 容器名 | 当前镜像 | 监听 |
 |---|---|---|---|
-| `cli-proxy-api` | `cli-proxy-api` | `eceasy/cli-proxy-api:v7.2.86` | `127.0.0.1:8317` 等 |
-| `cpa-manager-plus` | `cpa-cpa-manager-plus-1` | `andrewzzhu/cpa-manager-plus:v1.11.3-multi-provider-inspection.1` | `127.0.0.1:18317` |
+| `cli-proxy-api` | `cli-proxy-api` | `andrewzzhu/cli-proxy-api:v7.2.92-nomi-i2i-bridge` | `127.0.0.1:8317` 等 |
+| `cpa-manager-plus` | `cpa-cpa-manager-plus-1` | `andrewzzhu/cpa-manager-plus:v1.11.3-upstream-main-multi-provider.1` | `127.0.0.1:18317` |
 
-本机已构建、**尚未推送到 Docker Hub** 的 A1 镜像（Keychain 阻塞 + 用户选择稍后再推）：
+当前生产镜像 digest（linux/amd64）：
 
 ```text
-andrewzzhu/cpa-manager-plus:v1.11.3-multi-provider-inspection.2
-local Id: sha256:a7ee948262e5095e4b0e3f288d803a9a146d957ac509a2baa93bac577aa4d141
-platform: linux/amd64
-commit: 75bb4fe9
+CPA:  andrewzzhu/cli-proxy-api:v7.2.92-nomi-i2i-bridge
+      digest sha256:de8e747f9a677b5608253523399c3ff3ed97e22d2a2691f77f7566c1ac15a4c7
+      commit 11fa2285
+
+Plus: andrewzzhu/cpa-manager-plus:v1.11.3-upstream-main-multi-provider.1
+      digest sha256:b14634a278a59a156852b699f5de25de7d725ebc455a8609bf1d72b59d375bf7
+      commit 5cae612a
 ```
 
 关键挂载：
@@ -425,30 +446,27 @@ ssh vps "docker compose -f /root/cpa/docker-compose.yml up -d --no-deps --force-
 当前可用回滚镜像：
 
 ```text
+andrewzzhu/cpa-manager-plus:v1.11.3-upstream-main-multi-provider.1   # 当前生产
+andrewzzhu/cpa-manager-plus:v1.11.3-quota-reset-calibration.2       # 升级前生产
 andrewzzhu/cpa-manager-plus:v1.11.3-multi-provider-inspection.1
 andrewzzhu/cpa-manager-plus:v1.11.2-multi-provider-inspection.3
-```
-
-待 Hub 可用后的 A1 升级目标：
-
-```text
-andrewzzhu/cpa-manager-plus:v1.11.3-multi-provider-inspection.2
 ```
 
 注意：Mac 本机 Docker Hub push 依赖登录钥匙串。若 agent 会话无法交互解锁 Keychain，需要用户本机执行 `security unlock-keychain` 或图形解锁后，明确说「继续 push」再推。禁止 `docker save | ssh` 旁路。
 
 ## 8. CPA 官方升级流程
 
-CPA 当前没有需要维护的本地源码定制，VPS 使用官方 Docker 镜像。优先升级精确版本，不使用漂移的 `latest`。
+CPA 本地定制统一维护在 `Documents/projects/CLIProxyAPI`（见第 2 节）。生产镜像从该仓基于官方 tag 叠 nomi bridge 后构建，推到 `andrewzzhu/cli-proxy-api:<tag>`。优先升级精确版本，不使用漂移的 `latest`。
 
 本文生成时：
 
 ```text
-VPS 当前: v7.2.86
-官方最新: v7.2.86
+VPS 当前: andrewzzhu/cli-proxy-api:v7.2.92-nomi-i2i-bridge
+官方最新: v7.2.92
+本地定制: Nomi chat→images bridge only（alpha search 已由官方承担）
 ```
 
-`v7.2.81` 到 `v7.2.86` 包含 Kimi header、插件同步、xAI 图片/compact 修复、CPA Trace ID、WebSocket 连接跟踪、Codex executor 和并行 tool call 归一化等变化。升级前重新看每个 release note。
+`v7.2.86` 到 `v7.2.92` 包含 Kimi path、translator 性能、auth 文件名 account hash、xAI additional_tools、Codex encrypted reasoning 消毒、JSON payload 复用等变化。升级前重新看每个 release note。
 
 Plus `v1.11.3` 的完整 xAI API Key 管理依赖 CPA `/v0/management/xai-api-key`。升级 Plus 前应确认目标 CPA 版本支持该接口。
 
@@ -468,7 +486,8 @@ Plus `v1.11.3` 的完整 xAI API Key 管理依赖 CPA `/v0/management/xai-api-ke
 ### 8.2 最小停机升级 CPA
 
 ```bash
-CPA_IMAGE=eceasy/cli-proxy-api:<new-version>
+# 先在本机 Mac 从 Documents/projects/CLIProxyAPI 构建并 push amd64 定制镜像
+CPA_IMAGE=andrewzzhu/cli-proxy-api:<new-tag>
 
 ssh vps "docker pull $CPA_IMAGE"
 ssh vps "cp /root/cpa/docker-compose.yml /root/cpa/docker-compose.yml.pre-cpa-<new-version>-<timestamp>"
@@ -498,7 +517,8 @@ ssh vps "docker compose -f /root/cpa/docker-compose.yml ps"
 当前回滚基线：
 
 ```text
-eceasy/cli-proxy-api:v7.2.80
+andrewzzhu/cli-proxy-api:v7.2.92-nomi-i2i-bridge   # 当前生产
+andrewzzhu/cli-proxy-api:v7.2.86-nomi-i2i-bridge   # 升级前生产
 ```
 
 ## 9. Plus 数据备份与恢复
@@ -574,9 +594,12 @@ curl -sS -L -o /dev/null -w '%{http_code}\n' https://api.anzhi.app/
 
 ## 12. 已有 compose 回滚文件
 
-VPS 当前已有：
+VPS 当前已有（节选，含 2026-07-20 升级）：
 
 ```text
+/root/cpa/docker-compose.yml.pre-cpa-v7.2.92-20260720113902
+/root/cpa/docker-compose.yml.pre-plus-upstream-main-20260720120434
+/root/cpa/backups/cmpdata-pre-plus-upstream-main-20260720120434.tgz
 /root/cpa/docker-compose.yml.bak-20260714-133952
 /root/cpa/docker-compose.yml.bak-auth-created-at-20260715-120326
 /root/cpa/docker-compose.yml.pre-auth-stats-fix-20260715

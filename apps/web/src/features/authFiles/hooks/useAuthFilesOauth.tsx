@@ -549,6 +549,12 @@ export function useAuthFilesOauth(options: UseAuthFilesOauthOptions): UseAuthFil
     [persistChannelMappings, runModelAliasMutation, showConfirmation, showNotification, t]
   );
 
+  // IMPORTANT: return the stable useCallback identities, not inline wrappers.
+  // AuthFilesPage mounts with:
+  //   useEffect(() => { loadFiles(); loadExcluded(); loadModelAlias(); },
+  //             [loadFiles, loadExcluded, loadModelAlias])
+  // Fresh arrows every render retrigger that effect → request storm + UI flicker
+  // (oauth-model-alias / oauth-excluded-models / auth-files thrashing).
   return {
     excluded,
     excludedError,
@@ -556,8 +562,8 @@ export function useAuthFilesOauth(options: UseAuthFilesOauthOptions): UseAuthFil
     modelAliasError,
     allProviderModels,
     providerList,
-    loadExcluded: () => loadExcluded(),
-    loadModelAlias: () => loadModelAlias(),
+    loadExcluded,
+    loadModelAlias,
     deleteExcluded,
     deleteModelAlias,
     handleMappingUpdate,
